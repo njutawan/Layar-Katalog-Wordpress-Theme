@@ -1,0 +1,48 @@
+<!-- wp:template-part {"slug":"header"} /-->
+<!-- wp:group {"tagName":"main","className":"archive-main genre-archive-main","layout":{"type":"constrained"}} -->
+<main class="wp-block-group archive-main genre-archive-main">
+	<!-- wp:group {"align":"wide","className":"archive-intro","layout":{"type":"constrained"}} -->
+	<div class="wp-block-group alignwide archive-intro">
+		<!-- wp:paragraph {"className":"eyebrow"} --><p class="eyebrow">JELAJAHI GENRE</p><!-- /wp:paragraph -->
+		<!-- wp:query-title {"type":"archive","showPrefix":false,"className":"archive-title"} /-->
+		<!-- wp:paragraph {"className":"archive-lede"} --><p class="archive-lede">Temukan judul berdasarkan genre. Gunakan filter untuk mempersempit pilihan.</p><!-- /wp:paragraph -->
+	</div>
+	<!-- /wp:group -->
+	<!-- wp:group {"align":"wide","className":"catalog-filters-wrap","layout":{"type":"constrained"}} -->
+	<div class="wp-block-group alignwide catalog-filters-wrap">
+		<!-- wp:layar-katalog/catalog-filters /-->
+	</div>
+	<!-- /wp:group -->
+	<!-- wp:shortcode -->[layarkatalog_ad_slot slot="catalog_before_grid"]<!-- /wp:shortcode -->
+	<!-- wp:group {"align":"wide","className":"archive-list","layout":{"type":"constrained"}} -->
+	<div class="wp-block-group alignwide archive-list">
+		<!-- wp:query {"query":{"perPage":12,"pages":0,"offset":0,"postType":"lk_title","order":"desc","orderBy":"date","inherit":true},"displayLayout":{"type":"grid","columns":4},"className":"archive-query"} -->
+		<div class="wp-block-query archive-query">
+			<!-- wp:post-template -->
+				<!-- wp:group {"className":"catalog-card","layout":{"type":"constrained"}} -->
+				<div class="wp-block-group catalog-card">
+					<!-- wp:post-featured-image {"isLink":true,"aspectRatio":"4/5","scale":"cover","sizeSlug":"large","className":"catalog-card__media"} /-->
+					<!-- wp:group {"className":"catalog-card-body","layout":{"type":"constrained"}} -->
+					<div class="wp-block-group catalog-card-body">
+						<!-- wp:post-terms {"term":"lk_genre","separator":" ","className":"catalog-card__terms"} /-->
+						<!-- wp:post-title {"isLink":true,"level":3,"className":"catalog-card__title"} /-->
+						<!-- wp:post-excerpt {"excerptLength":18,"showMoreOnNewLine":false,"className":"catalog-card__excerpt"} /-->
+						<!-- wp:layar-katalog/catalog-details /-->
+					</div>
+					<!-- /wp:group -->
+				</div>
+				<!-- /wp:group -->
+			<!-- /wp:post-template -->
+			<!-- wp:query-no-results --><!-- wp:paragraph --><p>Belum ada judul dengan genre ini.</p><!-- /wp:paragraph --><!-- /wp:query-no-results -->
+			<!-- wp:query-pagination {"paginationArrow":"arrow","layout":{"type":"flex","justifyContent":"space-between"}} -->
+				<!-- wp:query-pagination-previous {"label":"← Sebelumnya"} /-->
+				<!-- wp:query-pagination-numbers /-->
+				<!-- wp:query-pagination-next {"label":"Selanjutnya →"} /-->
+			<!-- /wp:query-pagination -->
+		</div>
+		<!-- /wp:query -->
+	</div>
+	<!-- /wp:group -->
+</main>
+<!-- /wp:group -->
+<!-- wp:template-part {"slug":"footer"} /-->

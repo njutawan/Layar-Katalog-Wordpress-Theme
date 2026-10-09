@@ -1,0 +1,13 @@
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local packages/build artifacts; source and bundled vendor dependencies stay tracked
+*.zip
+*.tar.gz
+coverage/
+.phpunit.cache/

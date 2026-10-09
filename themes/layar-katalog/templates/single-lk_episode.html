@@ -1,0 +1,23 @@
+<!-- wp:template-part {"slug":"header"} /-->
+<!-- wp:group {"tagName":"main","className":"single-main episode-main","layout":{"type":"constrained"}} -->
+<main class="wp-block-group single-main episode-main">
+	<!-- wp:group {"align":"wide","className":"single-article episode-article","layout":{"type":"constrained"}} -->
+	<div class="wp-block-group alignwide single-article episode-article">
+		<!-- wp:layar-katalog/breadcrumbs /-->
+		<!-- wp:group {"className":"single-top episode-top","layout":{"type":"constrained"}} -->
+		<div class="wp-block-group single-top episode-top">
+			<!-- wp:layar-katalog/episode-info /-->
+			<!-- wp:shortcode -->[lk_episode_history_marker]<!-- /wp:shortcode -->
+			<!-- wp:post-title {"level":1,"className":"single-title"} /-->
+		</div>
+		<!-- /wp:group -->
+		<!-- wp:shortcode -->[layarkatalog_ad_slot slot="episode_before_player"]<!-- /wp:shortcode -->
+		<!-- wp:layar-katalog/video-player /-->
+		<!-- wp:post-content {"layout":{"type":"constrained"},"className":"single-content"} /-->
+		<!-- wp:shortcode -->[layarkatalog_ad_slot slot="episode_after_player"]<!-- /wp:shortcode -->
+		<!-- wp:layar-katalog/episode-navigation /-->
+	</div>
+	<!-- /wp:group -->
+</main>
+<!-- /wp:group -->
+<!-- wp:template-part {"slug":"footer"} /-->

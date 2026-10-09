@@ -1,0 +1,27 @@
+<!-- wp:template-part {"slug":"header"} /-->
+<!-- wp:group {"tagName":"main","className":"single-main","layout":{"type":"constrained"}} -->
+<main class="wp-block-group single-main">
+	<!-- wp:group {"align":"wide","className":"single-article","layout":{"type":"constrained"}} -->
+	<div class="wp-block-group alignwide single-article">
+		<!-- wp:layar-katalog/breadcrumbs /-->
+		<!-- wp:group {"className":"single-top","layout":{"type":"constrained"}} -->
+		<div class="wp-block-group single-top">
+			<!-- wp:post-terms {"term":"category","separator":" / "} /-->
+			<!-- wp:post-title {"level":1,"className":"single-title"} /-->
+			<!-- wp:layar-katalog/catalog-details /-->
+			<!-- wp:post-excerpt {"className":"single-lede"} /-->
+			<!-- wp:shortcode -->[lk_user_rating]<!-- /wp:shortcode -->
+			<!-- wp:shortcode -->[lk_watchlist_button]<!-- /wp:shortcode -->
+		</div>
+		<!-- /wp:group -->
+		<!-- wp:post-featured-image {"aspectRatio":"16/9","scale":"cover","sizeSlug":"large","className":"single-cover"} /-->
+		<!-- wp:post-content {"layout":{"type":"constrained"},"className":"single-content"} /-->
+		<!-- wp:shortcode -->[layarkatalog_ad_slot slot="title_before_episodes"]<!-- /wp:shortcode -->
+		<!-- wp:layar-katalog/episode-list /-->
+		<!-- wp:post-terms {"term":"post_tag","separator":" ","className":"single-tags"} /-->
+		<!-- wp:layar-katalog/related-titles /-->
+	</div>
+	<!-- /wp:group -->
+</main>
+<!-- /wp:group -->
+<!-- wp:template-part {"slug":"footer"} /-->

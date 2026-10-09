@@ -1,0 +1,33 @@
+<!-- wp:template-part {"slug":"header"} /-->
+<!-- wp:group {"tagName":"main","className":"single-main","layout":{"type":"constrained"}} -->
+<main class="wp-block-group single-main">
+	<!-- wp:group {"align":"wide","className":"single-article","layout":{"type":"constrained"}} -->
+	<div class="wp-block-group alignwide single-article">
+		<!-- wp:group {"className":"single-top","layout":{"type":"constrained"}} -->
+		<div class="wp-block-group single-top">
+			<!-- wp:post-terms {"term":"category","separator":" / "} /-->
+			<!-- wp:post-title {"level":1,"className":"single-title"} /-->
+			<!-- wp:group {"className":"single-byline","layout":{"type":"flex","flexWrap":"wrap","justifyContent":"left"}} -->
+			<div class="wp-block-group single-byline">
+				<!-- wp:post-date {"format":"d M Y"} /-->
+				<!-- wp:paragraph --><p>•</p><!-- /wp:paragraph -->
+				<!-- wp:post-author-name {"isLink":true} /-->
+			</div>
+			<!-- /wp:group -->
+		</div>
+		<!-- /wp:group -->
+		<!-- wp:post-featured-image {"aspectRatio":"16/9","scale":"cover","sizeSlug":"large","className":"single-cover"} /-->
+		<!-- wp:post-content {"layout":{"type":"constrained"},"className":"single-content"} /-->
+		<!-- wp:post-terms {"term":"post_tag","separator":" ","className":"single-tags"} /-->
+		<!-- wp:group {"className":"post-navigation","layout":{"type":"grid","columnCount":2}} -->
+		<div class="wp-block-group post-navigation">
+			<!-- wp:post-navigation-link {"type":"previous","label":"← Tulisan sebelumnya","showTitle":true} /-->
+			<!-- wp:post-navigation-link {"type":"next","label":"Tulisan berikutnya →","showTitle":true} /-->
+		</div>
+		<!-- /wp:group -->
+		<!-- wp:post-comments-form /-->
+	</div>
+	<!-- /wp:group -->
+</main>
+<!-- /wp:group -->
+<!-- wp:template-part {"slug":"footer"} /-->

@@ -15,8 +15,375 @@ function layarkatalog_setup() {
 	add_theme_support( 'automatic-feed-links' );
 	add_theme_support( 'responsive-embeds' );
 	add_theme_support( 'editor-styles' );
+	add_theme_support(
+		'custom-logo',
+		array(
+			'height'               => 120,
+			'width'                => 120,
+			'flex-height'          => true,
+			'flex-width'           => true,
+			'header-text'          => array( 'site-title', 'site-tagline' ),
+			'unlink-homepage-logo' => false,
+		)
+	);
 	add_editor_style( 'style.css' );
+	load_theme_textdomain( 'layar-katalog', get_template_directory() . '/languages' );
+	register_sidebar(
+		array(
+			'name'          => __( 'Footer Widget 1', 'layar-katalog' ),
+			'id'            => 'footer-1',
+			'description'   => __( 'Widget di kolom pertama footer.', 'layar-katalog' ),
+			'before_widget' => '<div id="%1$s" class="widget %2$s">',
+			'after_widget'  => '</div>',
+			'before_title'  => '<h3 class="widget-title">',
+			'after_title'   => '</h3>',
+		)
+	);
+	register_sidebar(
+		array(
+			'name'          => __( 'Footer Widget 2', 'layar-katalog' ),
+			'id'            => 'footer-2',
+			'description'   => __( 'Widget di kolom kedua footer.', 'layar-katalog' ),
+			'before_widget' => '<div id="%1$s" class="widget %2$s">',
+			'after_widget'  => '</div>',
+			'before_title'  => '<h3 class="widget-title">',
+			'after_title'   => '</h3>',
+		)
+	);
+	register_sidebar(
+		array(
+			'name'          => __( 'Footer Widget 3', 'layar-katalog' ),
+			'id'            => 'footer-3',
+			'description'   => __( 'Widget di kolom ketiga footer.', 'layar-katalog' ),
+			'before_widget' => '<div id="%1$s" class="widget %2$s">',
+			'after_widget'  => '</div>',
+			'before_title'  => '<h3 class="widget-title">',
+			'after_title'   => '</h3>',
+		)
+	);
 }
+
+function layarkatalog_skip_link() {
+	echo '<a class="skip-link screen-reader-text" href="#main-content">' . esc_html__( 'Langsung ke konten utama', 'layar-katalog' ) . '</a>' . "\n";
+}
+add_action( 'wp_body_open', 'layarkatalog_skip_link' );
+
+/**
+ * Render the custom logo inside the block header template.
+ * Shows nothing when no custom logo is set, so the default brand-mark is visible.
+ */
+function layarkatalog_custom_logo_shortcode() {
+	if ( ! has_custom_logo() ) {
+		return '';
+	}
+	$logo_id   = get_theme_mod( 'custom_logo' );
+	$logo_url  = wp_get_attachment_image_url( $logo_id, 'full' );
+	$logo_attr = array(
+		'class'   => 'brand-custom-logo',
+		'alt'     => get_bloginfo( 'name' ),
+		'loading' => 'eager',
+		'width'   => 43,
+		'height'  => 43,
+	);
+	$img = '<a href="' . esc_url( home_url( '/' ) ) . '" aria-label="' . esc_attr( get_bloginfo( 'name' ) ) . '" class="brand-custom-logo-link">' . wp_get_attachment_image( $logo_id, 'thumbnail', false, $logo_attr ) . '</a>';
+	return '<div class="brand-custom-logo-wrap">' . $img . '</div>';
+}
+add_shortcode( 'layarkatalog_custom_logo', 'layarkatalog_custom_logo_shortcode' );
+
+/**
+ * Add an id to the first <main> element so the skip link has a target.
+ * Runs once on wp_footer to avoid dependencies on template markup.
+ */
+function layarkatalog_ensure_main_content_id() {
+	?>
+	<script>
+	(function () {
+		'use strict';
+		var main = document.querySelector( 'main' );
+		if ( main && ! main.id ) {
+			main.id = 'main-content';
+		}
+	})();
+	</script>
+	<?php
+}
+add_action( 'wp_footer', 'layarkatalog_ensure_main_content_id', 1 );
+
+/** Register Customizer options for appearance control without editing code. */
+function layarkatalog_customize_register( $wp_customize ) {
+	/* ── Section ── */
+	$wp_customize->add_section(
+		'layarkatalog_appearance',
+		array(
+			'title'    => __( 'Layar Katalog', 'layar-katalog' ),
+			'priority' => 35,
+		)
+	);
+
+	/* ── Primary color ── */
+	$wp_customize->add_setting(
+		'layarkatalog_primary_color',
+		array(
+			'default'           => '#ccf36b',
+			'sanitize_callback' => 'sanitize_hex_color',
+			'transport'         => 'postMessage',
+		)
+	);
+	$wp_customize->add_control(
+		new WP_Customize_Color_Control(
+			$wp_customize,
+			'layarkatalog_primary_color',
+			array(
+				'label'   => __( 'Warna aksen utama', 'layar-katalog' ),
+				'section' => 'layarkatalog_appearance',
+			)
+		)
+	);
+
+	/* ── Accent (coral) color ── */
+	$wp_customize->add_setting(
+		'layarkatalog_accent_color',
+		array(
+			'default'           => '#fa765d',
+			'sanitize_callback' => 'sanitize_hex_color',
+			'transport'         => 'postMessage',
+		)
+	);
+	$wp_customize->add_control(
+		new WP_Customize_Color_Control(
+			$wp_customize,
+			'layarkatalog_accent_color',
+			array(
+				'label'   => __( 'Warna aksen sekunder', 'layar-katalog' ),
+				'section' => 'layarkatalog_appearance',
+			)
+		)
+	);
+
+	/* ── Dark mode ── */
+	$wp_customize->add_setting(
+		'layarkatalog_dark_mode',
+		array(
+			'default'           => 'auto',
+			'sanitize_callback' => function ( $value ) {
+				return in_array( $value, array( 'auto', 'light', 'dark' ), true ) ? $value : 'auto';
+			},
+			'transport'         => 'refresh',
+		)
+	);
+	$wp_customize->add_control(
+		'layarkatalog_dark_mode',
+		array(
+			'label'   => __( 'Mode gelap', 'layar-katalog' ),
+			'section' => 'layarkatalog_appearance',
+			'type'    => 'radio',
+			'choices' => array(
+				'auto'  => __( 'Otomatis (ikut sistem)', 'layar-katalog' ),
+				'light' => __( 'Selalu terang', 'layar-katalog' ),
+				'dark'  => __( 'Selalu gelap', 'layar-katalog' ),
+			),
+		)
+	);
+
+	/* ── Font family ── */
+	$wp_customize->add_setting(
+		'layarkatalog_font_family',
+		array(
+			'default'           => 'system',
+			'sanitize_callback' => function ( $value ) {
+				return in_array( $value, array( 'system', 'editorial' ), true ) ? $value : 'system';
+			},
+			'transport'         => 'refresh',
+		)
+	);
+	$wp_customize->add_control(
+		'layarkatalog_font_family',
+		array(
+			'label'   => __( 'Jenis huruf utama', 'layar-katalog' ),
+			'section' => 'layarkatalog_appearance',
+			'type'    => 'radio',
+		'choices' => array(
+			'system'    => __( 'Sans-serif (Inter / system)', 'layar-katalog' ),
+			'editorial' => __( 'Serif (Georgia / editorial)', 'layar-katalog' ),
+		),
+	)
+	);
+
+	/* ── Google Fonts (optional) ── */
+	$wp_customize->add_setting(
+		'layarkatalog_google_font',
+		array(
+			'default'           => '',
+			'sanitize_callback' => function ( $value ) {
+				$allowed = array( '', 'playfair', 'merriweather', 'roboto', 'lora', 'poppins' );
+				return in_array( $value, $allowed, true ) ? $value : '';
+			},
+			'transport'         => 'refresh',
+		)
+	);
+	$wp_customize->add_control(
+		'layarkatalog_google_font',
+		array(
+			'label'       => __( 'Google Font (opsional)', 'layar-katalog' ),
+			'description' => __( 'Muat font dari Google Fonts secara async. Kosongkan untuk memakai font sistem.', 'layar-katalog' ),
+			'section'     => 'layarkatalog_appearance',
+			'type'        => 'select',
+			'choices'     => array(
+				''             => __( 'Tidak ada (font sistem)', 'layar-katalog' ),
+				'playfair'     => 'Playfair Display',
+				'merriweather' => 'Merriweather',
+				'roboto'       => 'Roboto',
+				'lora'         => 'Lora',
+				'poppins'      => 'Poppins',
+			),
+		)
+	);
+}
+add_action( 'customize_register', 'layarkatalog_customize_register' );
+
+/** Output customizer CSS inline in the page head. */
+function layarkatalog_customizer_css() {
+	$primary  = get_theme_mod( 'layarkatalog_primary_color', '#ccf36b' );
+	$accent   = get_theme_mod( 'layarkatalog_accent_color', '#fa765d' );
+	$dark     = get_theme_mod( 'layarkatalog_dark_mode', 'auto' );
+	$font     = get_theme_mod( 'layarkatalog_font_family', 'system' );
+	$css      = '';
+
+	if ( '#ccf36b' !== $primary ) {
+		$css .= ':root{--lk-lime:' . esc_attr( $primary ) . '}';
+	}
+	if ( '#fa765d' !== $accent ) {
+		$css .= ':root{--lk-coral:' . esc_attr( $accent ) . '}';
+	}
+	if ( 'dark' === $dark ) {
+		$css .= ':root{--lk-ink:#e8ebe6;--lk-ink-soft:#b0b8ae;--lk-paper:#151a17;--lk-white:#1d2320;--lk-line:rgba(232,235,230,.12);--lk-shadow:0 18px 55px rgba(0,0,0,.35)}';
+		$css .= '@media(prefers-color-scheme:dark){:root{--lk-ink:#e8ebe6;--lk-ink-soft:#b0b8ae;--lk-paper:#151a17;--lk-white:#1d2320;--lk-line:rgba(232,235,230,.12);--lk-shadow:0 18px 55px rgba(0,0,0,.35)}}';
+	}
+	if ( 'light' === $dark ) {
+		$css .= '@media(prefers-color-scheme:dark){:root{--lk-ink:#19342d;--lk-ink-soft:#4b625b;--lk-paper:#f4f5ef;--lk-white:#fffefa;--lk-line:rgba(25,52,45,.12);--lk-shadow:0 18px 55px rgba(22,43,36,.1)}}';
+	}
+	if ( 'editorial' === $font ) {
+		$css .= 'body{font-family:Georgia,"Times New Roman",serif}';
+	}
+	$google = get_theme_mod( 'layarkatalog_google_font', '' );
+	if ( $google ) {
+		$font_map = array(
+			'playfair'     => '"Playfair Display", Georgia, serif',
+			'merriweather' => '"Merriweather", Georgia, serif',
+			'roboto'       => '"Roboto", system-ui, sans-serif',
+			'lora'         => '"Lora", Georgia, serif',
+			'poppins'      => '"Poppins", system-ui, sans-serif',
+		);
+		if ( isset( $font_map[ $google ] ) ) {
+			$css .= 'body{font-family:' . $font_map[ $google ] . '}';
+			$css .= 'h1,h2,h3,h4,h5,h6{font-family:' . $font_map[ $google ] . '}';
+		}
+	}
+
+	if ( $css ) {
+		echo '<style id="layarkatalog-customizer-css">' . $css . '</style>' . "\n";
+	}
+}
+add_action( 'wp_head', 'layarkatalog_customizer_css', 4 );
+
+/** Register customizer live-preview script. */
+function layarkatalog_customize_preview_js() {
+	wp_enqueue_script(
+		'layarkatalog-customizer-preview',
+		get_template_directory_uri() . '/customizer-preview.js',
+		array( 'customize-preview' ),
+		wp_get_theme()->get( 'Version' ),
+		true
+	);
+}
+add_action( 'customize_preview_init', 'layarkatalog_customize_preview_js' );
+
+/** PWA: register the web app manifest. */
+function layarkatalog_pwa_manifest_link() {
+	$manifest_url = get_theme_file_uri( 'manifest.json' );
+	echo '<link rel="manifest" href="' . esc_url( $manifest_url ) . '">' . "\n";
+}
+add_action( 'wp_head', 'layarkatalog_pwa_manifest_link', 5 );
+
+/** Shortcode that renders a registered sidebar / widget area inside block templates. */
+function layarkatalog_widget_area_shortcode( $atts ) {
+	$atts = shortcode_atts( array( 'id' => '' ), $atts, 'layarkatalog_widget_area' );
+	$id   = sanitize_key( $atts['id'] );
+	if ( ! $id || ! is_active_sidebar( $id ) ) {
+		return '';
+	}
+	ob_start();
+	dynamic_sidebar( $id );
+	return ob_get_clean();
+}
+add_shortcode( 'layarkatalog_widget_area', 'layarkatalog_widget_area_shortcode' );
+
+/** Enqueue front-end enhancement scripts (lightbox, back-to-top). */
+function layarkatalog_enqueue_enhancements() {
+	if ( is_admin() ) {
+		return;
+	}
+	$version = wp_get_theme()->get( 'Version' );
+
+	wp_enqueue_script(
+		'layarkatalog-lightbox',
+		get_template_directory_uri() . '/assets/lightbox.js',
+		array(),
+		$version,
+		true
+	);
+	wp_enqueue_script(
+		'layarkatalog-back-to-top',
+		get_template_directory_uri() . '/assets/back-to-top.js',
+		array(),
+		$version,
+		true
+	);
+}
+add_action( 'wp_enqueue_scripts', 'layarkatalog_enqueue_enhancements', 30 );
+
+/** Load Google Fonts asynchronously when selected in the Customizer. */
+function layarkatalog_enqueue_google_fonts() {
+	$font = get_theme_mod( 'layarkatalog_google_font', '' );
+	if ( ! $font ) {
+		return;
+	}
+	$urls = array();
+
+	$presets = array(
+		'playfair'  => 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700',
+		'merriweather' => 'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700',
+		'roboto'    => 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700',
+		'lora'      => 'https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700',
+		'poppins'   => 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700',
+	);
+	if ( isset( $presets[ $font ] ) ) {
+		$urls[] = $presets[ $font ];
+	}
+
+	/**
+	 * Filter the Google Font URLs loaded by the theme.
+	 *
+	 * @param array $urls Array of Google Fonts CSS URLs.
+	 */
+	$urls = apply_filters( 'layarkatalog_google_font_urls', $urls );
+	$urls = array_filter( array_unique( array_map( 'esc_url_raw', $urls ) ) );
+
+	if ( empty( $urls ) ) {
+		return;
+	}
+
+	wp_enqueue_script(
+		'layarkatalog-font-loader',
+		get_template_directory_uri() . '/assets/font-loader.js',
+		array(),
+		$version,
+		true
+	);
+	wp_localize_script( 'layarkatalog-font-loader', 'LKFonts', array( 'urls' => $urls ) );
+}
+add_action( 'wp_enqueue_scripts', 'layarkatalog_enqueue_google_fonts', 5 );
+
 add_action( 'after_setup_theme', 'layarkatalog_setup' );
 
 function layarkatalog_enqueue_styles() {

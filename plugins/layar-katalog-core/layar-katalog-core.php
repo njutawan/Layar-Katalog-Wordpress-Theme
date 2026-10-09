@@ -230,6 +230,31 @@ function lkc_register_meta() {
 			'sanitize_callback' => 'lkc_sanitize_video_url',
 			'default'           => '',
 		),
+		'_lk_subtitle_url' => array(
+			'type'              => 'string',
+			'sanitize_callback' => 'lkc_sanitize_subtitle_url',
+			'default'           => '',
+		),
+		'_lk_subtitle_label' => array(
+			'type'              => 'string',
+			'sanitize_callback' => 'lkc_sanitize_subtitle_label',
+			'default'           => '',
+		),
+		'_lk_video_url_label' => array(
+			'type'              => 'string',
+			'sanitize_callback' => 'lkc_sanitize_video_url_label',
+			'default'           => '',
+		),
+		'_lk_video_url_2_label' => array(
+			'type'              => 'string',
+			'sanitize_callback' => 'lkc_sanitize_video_url_label',
+			'default'           => '',
+		),
+		'_lk_video_url_3_label' => array(
+			'type'              => 'string',
+			'sanitize_callback' => 'lkc_sanitize_video_url_label',
+			'default'           => '',
+		),
 		'_lk_seo_title' => array(
 			'type'              => 'string',
 			'sanitize_callback' => 'lkc_sanitize_seo_title',
@@ -242,7 +267,7 @@ function lkc_register_meta() {
 		),
 	);
 
-	foreach ( $title_meta as $meta_key => $args ) {
+	$episode_meta = array(
 		$args['single']        = true;
 		$args['show_in_rest']  = true;
 		$args['auth_callback'] = $can_edit_meta;
@@ -387,6 +412,66 @@ function lkc_is_allowed_video_url( $url ) {
 	return in_array( $scheme, array( 'http', 'https' ), true ) && in_array( $ext, array( 'mp4', 'webm' ), true );
 }
 
+/** Only accept direct VTT/SRT subtitle files over HTTP(S). */
+function lkc_sanitize_subtitle_url( $value ) {
+	if ( ! is_string( $value ) && ! is_numeric( $value ) ) {
+		return '';
+	}
+	$url = esc_url_raw( trim( (string) $value ), array( 'http', 'https' ) );
+	if ( ! $url ) {
+		return '';
+	}
+	$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+	$ext  = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
+	if ( ! in_array( $ext, array( 'vtt', 'srt' ), true ) ) {
+		return '';
+	}
+	return $url;
+}
+
+function lkc_sanitize_subtitle_label( $value ) {
+	if ( ! is_scalar( $value ) ) {
+		return 'Bahasa Indonesia';
+	}
+	$value = sanitize_text_field( (string) $value );
+	return $value ? wp_html_excerpt( $value, 60, '' ) : 'Bahasa Indonesia';
+}
+
+function lkc_sanitize_video_url_label( $value ) {
+	if ( ! is_scalar( $value ) ) {
+		return '';
+	}
+	return wp_html_excerpt( sanitize_text_field( (string) $value ), 40, '' );
+}
+
+/**
+ * Detect a quality label from a video URL filename.
+ * Returns user label if set, otherwise infers from filename patterns (e.g. 720p, 1080p).
+ */
+function lkc_get_video_source_label( $post_id, $index, $custom_label ) {
+	if ( $custom_label ) {
+		return $custom_label;
+	}
+	$key = ( 1 === $index ) ? '_lk_video_url' : '_lk_video_url_' . $index;
+	$url = get_post_meta( $post_id, $key, true );
+	if ( $url ) {
+		$filename = strtolower( pathinfo( (string) wp_parse_url( $url, PHP_URL_PATH ), PATHINFO_FILENAME ) );
+		if ( preg_match( '/(\d{3,4})p/', $filename, $m ) ) {
+			return $m[1] . 'p';
+		}
+		if ( false !== strpos( $filename, '4k' ) || false !== strpos( $filename, '2160' ) ) {
+			return '4K';
+		}
+		if ( false !== strpos( $filename, 'hd' ) ) {
+			return 'HD';
+		}
+		if ( false !== strpos( $filename, 'sd' ) ) {
+			return 'SD';
+		}
+	}
+	return sprintf( __( 'Sumber %d', 'layar-katalog-core' ), $index );
+}
+
 /** Add editorial and episode fields in the WordPress editor. */
 function lkc_add_meta_boxes() {
 	add_meta_box( 'lkc-title-data', __( 'Data Katalog', 'layar-katalog-core' ), 'lkc_render_title_meta_box', 'lk_title', 'normal', 'high' );
@@ -487,6 +572,11 @@ function lkc_render_episode_meta_box( $post ) {
 	$video_url       = get_post_meta( $post->ID, '_lk_video_url', true );
 	$video_url_2     = get_post_meta( $post->ID, '_lk_video_url_2', true );
 	$video_url_3     = get_post_meta( $post->ID, '_lk_video_url_3', true );
+	$subtitle_url    = get_post_meta( $post->ID, '_lk_subtitle_url', true );
+	$subtitle_label  = get_post_meta( $post->ID, '_lk_subtitle_label', true );
+	$video_label_1   = get_post_meta( $post->ID, '_lk_video_url_label', true );
+	$video_label_2   = get_post_meta( $post->ID, '_lk_video_url_2_label', true );
+	$video_label_3   = get_post_meta( $post->ID, '_lk_video_url_3_label', true );
 	$seo_title       = get_post_meta( $post->ID, '_lk_seo_title', true );
 	$seo_description = get_post_meta( $post->ID, '_lk_seo_description', true );
 	$titles          = get_posts(
@@ -527,13 +617,34 @@ function lkc_render_episode_meta_box( $post ) {
 			<input id="lkc-video-url" name="lkc_video_url" type="url" value="<?php echo esc_attr( $video_url ); ?>" class="widefat" placeholder="https://…/video.mp4">
 			<span class="description"><?php esc_html_e( 'Gunakan file yang Anda miliki atau berhak tayangkan. Hanya URL langsung HTTP/HTTPS berekstensi MP4/WebM; embed/iframe tidak diterima.', 'layar-katalog-core' ); ?></span>
 		</p>
+		<p>
+			<label for="lkc-video-label-1"><strong><?php esc_html_e( 'Label sumber 1 (opsional)', 'layar-katalog-core' ); ?></strong></label><br>
+			<input id="lkc-video-label-1" name="lkc_video_url_label" type="text" maxlength="40" value="<?php echo esc_attr( $video_label_1 ); ?>" class="widefat" placeholder="720p / HD / Server 1">
+		</p>
 		<p class="lkc-admin-wide">
 			<label for="lkc-video-url-2"><strong><?php esc_html_e( 'Sumber cadangan 2 (opsional)', 'layar-katalog-core' ); ?></strong></label><br>
 			<input id="lkc-video-url-2" name="lkc_video_url_2" type="url" value="<?php echo esc_attr( $video_url_2 ); ?>" class="widefat" placeholder="https://…/mirror.mp4">
 		</p>
+		<p>
+			<label for="lkc-video-label-2"><strong><?php esc_html_e( 'Label sumber 2 (opsional)', 'layar-katalog-core' ); ?></strong></label><br>
+			<input id="lkc-video-label-2" name="lkc_video_url_2_label" type="text" maxlength="40" value="<?php echo esc_attr( $video_label_2 ); ?>" class="widefat" placeholder="1080p / Server 2">
+		</p>
 		<p class="lkc-admin-wide">
 			<label for="lkc-video-url-3"><strong><?php esc_html_e( 'Sumber cadangan 3 (opsional)', 'layar-katalog-core' ); ?></strong></label><br>
 			<input id="lkc-video-url-3" name="lkc_video_url_3" type="url" value="<?php echo esc_attr( $video_url_3 ); ?>" class="widefat" placeholder="https://…/backup.webm">
+		</p>
+		<p>
+			<label for="lkc-video-label-3"><strong><?php esc_html_e( 'Label sumber 3 (opsional)', 'layar-katalog-core' ); ?></strong></label><br>
+			<input id="lkc-video-label-3" name="lkc_video_url_3_label" type="text" maxlength="40" value="<?php echo esc_attr( $video_label_3 ); ?>" class="widefat" placeholder="4K / Server 3">
+		</p>
+		<p class="lkc-admin-wide">
+			<label for="lkc-subtitle-url"><strong><?php esc_html_e( 'Subtitle / teks terjemahan (opsional)', 'layar-katalog-core' ); ?></strong></label><br>
+			<input id="lkc-subtitle-url" name="lkc_subtitle_url" type="url" value="<?php echo esc_attr( $subtitle_url ); ?>" class="widefat" placeholder="https://…/subtitle.vtt">
+			<span class="description"><?php esc_html_e( 'Format WebVTT (.vtt) atau SRT (.srt) melalui URL langsung. Subtitle muncul sebagai teks tertutup (CC) pada pemutar.', 'layar-katalog-core' ); ?></span>
+		</p>
+		<p>
+			<label for="lkc-subtitle-label"><strong><?php esc_html_e( 'Label subtitle', 'layar-katalog-core' ); ?></strong></label><br>
+			<input id="lkc-subtitle-label" name="lkc_subtitle_label" type="text" maxlength="60" value="<?php echo esc_attr( $subtitle_label ? $subtitle_label : 'Bahasa Indonesia' ); ?>" class="widefat" placeholder="Bahasa Indonesia">
 		</p>
 		<?php if ( lkc_is_seo_plugin_active() ) : ?>
 			<p class="lkc-admin-wide description"><?php esc_html_e( 'Plugin SEO terdeteksi. Gunakan kolom judul/deskripsi dari plugin tersebut; keluaran SEO bawaan Layar Katalog dimatikan agar tidak duplikat.', 'layar-katalog-core' ); ?></p>
@@ -598,6 +709,8 @@ function lkc_save_meta( $post_id ) {
 		$video_url   = isset( $_POST['lkc_video_url'] ) ? lkc_sanitize_video_url( wp_unslash( $_POST['lkc_video_url'] ) ) : '';
 		$video_url_2 = isset( $_POST['lkc_video_url_2'] ) ? lkc_sanitize_video_url( wp_unslash( $_POST['lkc_video_url_2'] ) ) : '';
 		$video_url_3 = isset( $_POST['lkc_video_url_3'] ) ? lkc_sanitize_video_url( wp_unslash( $_POST['lkc_video_url_3'] ) ) : '';
+		$subtitle_url   = isset( $_POST['lkc_subtitle_url'] ) ? lkc_sanitize_subtitle_url( wp_unslash( $_POST['lkc_subtitle_url'] ) ) : '';
+		$subtitle_label = isset( $_POST['lkc_subtitle_label'] ) ? lkc_sanitize_subtitle_label( wp_unslash( $_POST['lkc_subtitle_label'] ) ) : 'Bahasa Indonesia';
 
 		lkc_store_meta( $post_id, '_lk_parent_title', $parent_id );
 		lkc_store_meta( $post_id, '_lk_season', $season );
@@ -606,6 +719,14 @@ function lkc_save_meta( $post_id ) {
 		lkc_store_meta( $post_id, '_lk_video_url', $video_url );
 		lkc_store_meta( $post_id, '_lk_video_url_2', $video_url_2 );
 		lkc_store_meta( $post_id, '_lk_video_url_3', $video_url_3 );
+		lkc_store_meta( $post_id, '_lk_subtitle_url', $subtitle_url );
+		lkc_store_meta( $post_id, '_lk_subtitle_label', $subtitle_label ? $subtitle_label : '' );
+		for ( $vi = 1; $vi <= 3; $vi++ ) {
+			$label_key = ( 1 === $vi ) ? 'lkc_video_url_label' : 'lkc_video_url_' . $vi . '_label';
+			$meta_key  = ( 1 === $vi ) ? '_lk_video_url_label' : '_lk_video_url_' . $vi . '_label';
+			$raw_label = isset( $_POST[ $label_key ] ) ? lkc_sanitize_video_url_label( wp_unslash( $_POST[ $label_key ] ) ) : '';
+			lkc_store_meta( $post_id, $meta_key, $raw_label );
+		}
 		if ( isset( $_POST['lkc_seo_title'] ) ) {
 			lkc_store_meta( $post_id, '_lk_seo_title', lkc_sanitize_seo_title( wp_unslash( $_POST['lkc_seo_title'] ) ) );
 		}
@@ -879,10 +1000,12 @@ function lkc_player_shortcode( $atts = array() ) {
 		}
 		$path      = (string) wp_parse_url( $url, PHP_URL_PATH );
 		$extension = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
+		$label_key = ( 1 === $index ) ? '_lk_video_url_label' : '_lk_video_url_' . $index . '_label';
+		$custom_label = get_post_meta( $post_id, $label_key, true );
 		$sources[] = array(
 			'url'   => $url,
 			'type'  => ( 'webm' === $extension ) ? 'video/webm' : 'video/mp4',
-			'label' => sprintf( __( 'Sumber %d', 'layar-katalog-core' ), $index ),
+			'label' => lkc_get_video_source_label( $post_id, $index, $custom_label ),
 		);
 	}
 	if ( empty( $sources ) ) {
@@ -906,8 +1029,17 @@ function lkc_player_shortcode( $atts = array() ) {
 		$output .= '</div><p class="screen-reader-text" data-player-status aria-live="polite"></p>';
 	}
 
+	$subtitle_url   = lkc_sanitize_subtitle_url( get_post_meta( $post_id, '_lk_subtitle_url', true ) );
+	$subtitle_label = get_post_meta( $post_id, '_lk_subtitle_label', true );
+	$subtitle_label = $subtitle_label ? sanitize_text_field( $subtitle_label ) : __( 'Bahasa Indonesia', 'layar-katalog-core' );
+
 	$output .= '<video class="lk-player__video" controls preload="metadata" playsinline' . ( $poster_url ? ' poster="' . esc_url( $poster_url ) . '"' : '' ) . ' aria-label="' . esc_attr( get_the_title( $post_id ) ) . '">';
 	$output .= '<source src="' . esc_url( $first['url'] ) . '" type="' . esc_attr( $first['type'] ) . '">';
+	if ( $subtitle_url ) {
+		$subtitle_ext = strtolower( pathinfo( (string) wp_parse_url( $subtitle_url, PHP_URL_PATH ), PATHINFO_EXTENSION ) );
+		$track_type   = ( 'srt' === $subtitle_ext ) ? 'application/x-subrip' : 'text/vtt';
+		$output .= '<track kind="subtitles" src="' . esc_url( $subtitle_url ) . '" srclang="id" label="' . esc_attr( $subtitle_label ) . '" default>';
+	}
 	$output .= esc_html__( 'Browser Anda tidak mendukung pemutar video HTML5.', 'layar-katalog-core' );
 	$output .= '</video>';
 
@@ -1285,7 +1417,7 @@ function lkc_related_titles_shortcode( $atts = array() ) {
 		$output .= '<li><article class="lk-related-card">';
 		$output .= '<a class="lk-related-card__image" href="' . esc_url( get_permalink( $item ) ) . '" aria-label="' . esc_attr( get_the_title( $item ) ) . '">';
 		if ( has_post_thumbnail( $item ) ) {
-			$output .= get_the_post_thumbnail( $item, 'medium', array( 'loading' => 'lazy' ) );
+			$output .= get_the_post_thumbnail( $item, 'medium', array( 'loading' => 'lazy', 'decoding' => 'async' ) );
 		} else {
 			$output .= '<span aria-hidden="true">' . esc_html__( 'Tanpa gambar', 'layar-katalog-core' ) . '</span>';
 		}
@@ -1499,12 +1631,19 @@ function lkc_register_context_blocks() {
 			'shortcode'   => 'lk_related_titles',
 			'post_type'   => 'lk_title',
 		),
-		'episode-navigation' => array(
-			'title'       => __( 'Navigasi Episode', 'layar-katalog-core' ),
+'episode-navigation' => array(
+			'title'     => __( 'Navigasi Episode', 'layar-katalog-core' ),
 			'description' => __( 'Tautan episode sebelumnya/berikutnya dan kembali ke katalog induk.', 'layar-katalog-core' ),
-			'icon'        => 'controls-play',
-			'shortcode'   => 'lk_episode_navigation',
-			'post_type'   => 'lk_episode',
+			'icon'      => 'controls-play',
+			'shortcode' => 'lk_episode_navigation',
+			'post_type' => 'lk_episode',
+		),
+		'share-buttons' => array(
+			'title'       => __( 'Tombol Bagikan', 'layar-katalog-core' ),
+			'description' => __( 'Tombol berbagi ke WhatsApp, X/Twitter, Facebook, dan Telegram.', 'layar-katalog-core' ),
+			'icon'        => 'share',
+			'shortcode'   => 'lk_share_buttons',
+			'post_type'   => 'any',
 		),
 	);
 
@@ -1916,6 +2055,234 @@ function lkc_output_structured_data() {
 	}
 }
 add_action( 'wp_head', 'lkc_output_structured_data', 3 );
+
+/** Social share buttons for catalog and episode pages. */
+function lkc_share_buttons_shortcode( $atts = array() ) {
+	$atts     = shortcode_atts( array( 'id' => 0 ), $atts, 'lk_share_buttons' );
+	$post_id  = absint( $atts['id'] ) ? absint( $atts['id'] ) : get_the_ID();
+	$post     = get_post( $post_id );
+	if ( ! $post || ! in_array( $post->post_type, array( 'lk_title', 'lk_episode', 'post' ), true ) || 'publish' !== $post->post_status ) {
+		return '';
+	}
+	$url   = rawurlencode( get_permalink( $post_id ) );
+	$title = rawurlencode( get_the_title( $post_id ) );
+
+	$networks = array(
+		'whatsapp'  => array(
+			'label' => 'WhatsApp',
+			'icon'  => '💬',
+			'url'   => 'https://api.whatsapp.com/send?text=' . $title . '%20' . $url,
+		),
+		'twitter'   => array(
+			'label' => 'X / Twitter',
+			'icon'  => '𝕏',
+			'url'   => 'https://twitter.com/intent/tweet?url=' . $url . '&text=' . $title,
+		),
+		'facebook'  => array(
+			'label' => 'Facebook',
+			'icon'  => 'f',
+			'url'   => 'https://www.facebook.com/sharer/sharer.php?u=' . $url,
+		),
+		'telegram'  => array(
+			'label' => 'Telegram',
+			'icon'  => '✈',
+			'url'   => 'https://t.me/share/url?url=' . $url . '&text=' . $title,
+		),
+	);
+
+	$output  = '<nav class="lkc-share-buttons" aria-label="' . esc_attr__( 'Bagikan', 'layar-katalog-core' ) . '">';
+	$output .= '<span class="lkc-share-label">' . esc_html__( 'Bagikan:', 'layar-katalog-core' ) . '</span>';
+	foreach ( $networks as $slug => $network ) {
+		$output .= '<a class="lkc-share-btn lkc-share-btn--' . esc_attr( $slug ) . '" href="' . esc_url( $network['url'] ) . '" target="_blank" rel="noopener noreferrer" aria-label="' . esc_attr( sprintf( __( 'Bagikan ke %s', 'layar-katalog-core' ), $network['label'] ) ) . '">';
+		$output .= '<span class="lkc-share-btn__icon" aria-hidden="true">' . $network['icon'] . '</span>';
+		$output .= '<span class="lkc-share-btn__label">' . esc_html( $network['label'] ) . '</span>';
+		$output .= '</a>';
+	}
+	$output .= '</nav>';
+	return $output;
+}
+add_shortcode( 'lk_share_buttons', 'lkc_share_buttons_shortcode' );
+
+/** REST API: catalog search returning JSON results for autocomplete/AJAX. */
+function lkc_register_catalog_search_route() {
+	register_rest_route(
+		'lkc/v1',
+		'/catalog/search',
+		array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => 'lkc_rest_catalog_search',
+			'permission_callback' => '__return_true',
+			'args'                => array(
+				'q'      => array(
+					'required'          => false,
+					'sanitize_callback' => 'sanitize_text_field',
+					'default'           => '',
+				),
+				'genre'  => array(
+					'required'          => false,
+					'sanitize_callback' => 'sanitize_title',
+					'default'           => '',
+				),
+				'format' => array(
+					'required'          => false,
+					'sanitize_callback' => 'lkc_sanitize_format',
+					'default'           => '',
+				),
+				'year'   => array(
+					'required'          => false,
+					'sanitize_callback' => 'lkc_sanitize_year',
+					'default'           => 0,
+				),
+				'status' => array(
+					'required'          => false,
+					'sanitize_callback' => 'lkc_sanitize_status',
+					'default'           => '',
+				),
+				'sort'   => array(
+					'required'          => false,
+					'sanitize_callback' => 'sanitize_key',
+					'default'           => 'newest',
+				),
+				'page'   => array(
+					'required'          => false,
+					'sanitize_callback' => 'absint',
+					'default'           => 1,
+				),
+				'per_page' => array(
+					'required'          => false,
+					'sanitize_callback' => 'absint',
+					'default'           => 12,
+				),
+			),
+		)
+	);
+}
+add_action( 'rest_api_init', 'lkc_register_catalog_search_route' );
+
+function lkc_rest_catalog_search( $request ) {
+	$args = array(
+		'post_type'              => 'lk_title',
+		'post_status'            => 'publish',
+		'posts_per_page'         => min( 24, absint( $request->get_param( 'per_page' ) ) ),
+		'paged'                  => max( 1, absint( $request->get_param( 'page' ) ) ),
+		'no_found_rows'          => false,
+		'update_post_meta_cache' => true,
+		'update_post_term_cache' => true,
+	);
+
+	$search = sanitize_text_field( $request->get_param( 'q' ) );
+	if ( $search ) {
+		$args['s'] = wp_html_excerpt( $search, 100, '' );
+	}
+
+	$genre = sanitize_title( $request->get_param( 'genre' ) );
+	if ( $genre ) {
+		$args['tax_query'] = array(
+			array(
+				'taxonomy' => 'lk_genre',
+				'field'    => 'slug',
+				'terms'    => $genre,
+			),
+		);
+	}
+
+	$meta_query = array();
+	$format     = lkc_sanitize_format( $request->get_param( 'format' ) );
+	$year       = lkc_sanitize_year( $request->get_param( 'year' ) );
+	$status     = lkc_sanitize_status( $request->get_param( 'status' ) );
+	if ( $format ) {
+		$meta_query[] = array( 'key' => '_lk_format', 'value' => $format, 'compare' => '=' );
+	}
+	if ( $year ) {
+		$meta_query[] = array( 'key' => '_lk_year', 'value' => $year, 'compare' => '=', 'type' => 'NUMERIC' );
+	}
+	if ( $status ) {
+		$meta_query[] = array( 'key' => '_lk_status', 'value' => $status, 'compare' => '=' );
+	}
+	if ( ! empty( $meta_query ) ) {
+		$args['meta_query'] = $meta_query;
+	}
+
+	$sort = sanitize_key( $request->get_param( 'sort' ) );
+	if ( 'rating' === $sort ) {
+		$args['meta_key'] = '_lk_rating';
+		$args['orderby']  = array( 'meta_value_num' => 'DESC', 'date' => 'DESC' );
+	} elseif ( 'title' === $sort ) {
+		$args['orderby'] = 'title';
+		$args['order']   = 'ASC';
+	} elseif ( 'oldest' === $sort ) {
+		$args['orderby'] = 'date';
+		$args['order']   = 'ASC';
+	} else {
+		$args['orderby'] = 'date';
+		$args['order']   = 'DESC';
+	}
+
+	$query  = new WP_Query( $args );
+	$items  = array();
+	$format_labels = array(
+		'animation' => __( 'Animasi', 'layar-katalog-core' ),
+		'film'      => __( 'Film', 'layar-katalog-core' ),
+		'series'    => __( 'Serial', 'layar-katalog-core' ),
+		'other'     => __( 'Lainnya', 'layar-katalog-core' ),
+	);
+	foreach ( $query->posts as $post ) {
+		$genres     = wp_get_post_terms( $post->ID, 'lk_genre', array( 'fields' => 'names' ) );
+		$meta       = array();
+		$post_format = get_post_meta( $post->ID, '_lk_format', true );
+		if ( isset( $format_labels[ $post_format ] ) ) {
+			$meta['format'] = $format_labels[ $post_format ];
+		}
+		$year_val = absint( get_post_meta( $post->ID, '_lk_year', true ) );
+		if ( $year_val ) {
+			$meta['year'] = $year_val;
+		}
+		$rating = (float) get_post_meta( $post->ID, '_lk_rating', true );
+		if ( $rating > 0 ) {
+			$meta['rating'] = round( $rating, 1 );
+		}
+		$image_url = has_post_thumbnail( $post->ID ) ? get_the_post_thumbnail_url( $post->ID, 'medium' ) : '';
+		$items[]   = array(
+			'id'         => $post->ID,
+			'title'      => get_the_title( $post ),
+			'url'        => get_permalink( $post ),
+			'excerpt'    => wp_trim_words( get_the_excerpt( $post ), 18, '…' ),
+			'date'       => get_the_date( 'd M Y', $post ),
+			'image'      => $image_url,
+			'genres'     => is_array( $genres ) ? $genres : array(),
+			'meta'       => $meta,
+		);
+	}
+
+	$response = rest_ensure_response(
+		array(
+			'items'      => $items,
+			'total'      => (int) $query->found_posts,
+			'totalPages' => (int) $query->max_num_pages,
+			'page'       => max( 1, absint( $request->get_param( 'page' ) ) ),
+		)
+	);
+	$response->header( 'Cache-Control', 'public, max-age=60' );
+	return $response;
+}
+
+/** Enqueue the AJAX catalog filter script where the filter shortcode is used. */
+function lkc_enqueue_catalog_filter_assets() {
+	if ( ! is_post_type_archive( 'lk_title' ) && ! is_tax( 'lk_genre' ) ) {
+		if ( is_page() ) {
+			$page = get_post( get_queried_object_id() );
+			if ( ! $page || ! has_shortcode( $page->post_content, 'lk_catalog_filters' ) ) {
+				return;
+			}
+		} else {
+			return;
+		}
+	}
+	$script_path = LKC_PLUGIN_DIR . 'assets/catalog-filter.js';
+	$version     = file_exists( $script_path ) ? (string) filemtime( $script_path ) : LKC_PLUGIN_VERSION;
+	wp_enqueue_script( 'lkc-catalog-filter', LKC_PLUGIN_URL . 'assets/catalog-filter.js', array(), $version, true );
+}
+add_action( 'wp_enqueue_scripts', 'lkc_enqueue_catalog_filter_assets', 22 );
 
 /** Refresh rewrite rules once on upgrade so new archive/taxonomy routes work. */
 function lkc_maybe_refresh_rewrite_rules() {

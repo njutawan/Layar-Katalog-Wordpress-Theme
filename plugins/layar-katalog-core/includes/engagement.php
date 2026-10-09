@@ -294,7 +294,7 @@ function lkc_enqueue_engagement_assets() {
 	if ( ! $needed && is_page() ) {
 		$page = get_post( get_queried_object_id() );
 		if ( $page ) {
-			foreach ( array( 'lk_watchlist', 'lk_viewing_history', 'lk_watchlist_button', 'lk_user_rating' ) as $shortcode ) {
+			foreach ( array( 'lk_watchlist', 'lk_viewing_history', 'lk_watchlist_button', 'lk_user_rating', 'lk_share_buttons' ) as $shortcode ) {
 				if ( has_shortcode( $page->post_content, $shortcode ) ) {
 					$needed = true;
 					break;
@@ -314,17 +314,19 @@ function lkc_enqueue_engagement_assets() {
 		array(
 			'restUrl' => esc_url_raw( rest_url( 'lkc/v1/' ) ),
 			'nonce'   => wp_create_nonce( 'wp_rest' ),
-			'strings' => array(
-				'added'          => __( 'Ditambahkan ke watchlist.', 'layar-katalog-core' ),
-				'removed'        => __( 'Dihapus dari watchlist.', 'layar-katalog-core' ),
-				'emptyWatchlist' => __( 'Belum ada judul tersimpan.', 'layar-katalog-core' ),
-				'emptyHistory'   => __( 'Riwayat masih kosong.', 'layar-katalog-core' ),
-				'clearConfirm'   => __( 'Hapus semua item dari daftar ini?', 'layar-katalog-core' ),
-				'ratingSaved'    => __( 'Rating tersimpan.', 'layar-katalog-core' ),
-				'ratingFailed'   => __( 'Rating belum berhasil disimpan. Coba lagi.', 'layar-katalog-core' ),
-				'ratingLoadFailed' => __( 'Status rating tidak dapat dimuat. Coba muat ulang halaman.', 'layar-katalog-core' ),
-				'storageError'   => __( 'Penyimpanan browser tidak tersedia.', 'layar-katalog-core' ),
-			),
+		'strings' => array(
+			'added'          => __( 'Ditambahkan ke watchlist.', 'layar-katalog-core' ),
+			'removed'        => __( 'Dihapus dari watchlist.', 'layar-katalog-core' ),
+			'emptyWatchlist' => __( 'Belum ada judul tersimpan.', 'layar-katalog-core' ),
+			'emptyHistory'   => __( 'Riwayat masih kosong.', 'layar-katalog-core' ),
+			'clearConfirm'   => __( 'Hapus semua item dari daftar ini?', 'layar-katalog-core' ),
+			'cleared'        => __( 'Daftar berhasil dikosongkan.', 'layar-katalog-core' ),
+			'itemRemoved'    => __( 'Item dihapus.', 'layar-katalog-core' ),
+			'ratingSaved'    => __( 'Rating tersimpan.', 'layar-katalog-core' ),
+			'ratingFailed'   => __( 'Rating belum berhasil disimpan. Coba lagi.', 'layar-katalog-core' ),
+			'ratingLoadFailed' => __( 'Status rating tidak dapat dimuat. Coba muat ulang halaman.', 'layar-katalog-core' ),
+			'storageError'   => __( 'Penyimpanan browser tidak tersedia.', 'layar-katalog-core' ),
+		),
 		)
 	);
 }

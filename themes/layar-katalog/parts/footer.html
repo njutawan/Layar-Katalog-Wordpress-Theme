@@ -1,6 +1,25 @@
 <!-- wp:shortcode -->[layarkatalog_ad_slot slot="before_footer"]<!-- /wp:shortcode -->
 <!-- wp:group {"tagName":"footer","align":"full","className":"site-footer","textColor":"base","backgroundColor":"contrast","layout":{"type":"constrained"}} -->
-<footer class="wp-block-group alignfull site-footer has-base-color has-contrast-background-color has-text-color has-background">
+<footer class="wp-block-group alignfull site-footer has-base-color has-contrast-background-color has-text-color has-background" role="contentinfo" aria-label="Footer situs">
+	<!-- wp:group {"align":"wide","className":"footer-widgets","layout":{"type":"flex","justifyContent":"space-between","flexWrap":"wrap"}} -->
+	<div class="wp-block-group alignwide footer-widgets">
+		<!-- wp:group {"className":"footer-widget-col","layout":{"type":"constrained"}} -->
+		<div class="wp-block-group footer-widget-col">
+			<!-- wp:shortcode -->[layarkatalog_widget_area id="footer-1"]<!-- /wp:shortcode -->
+		</div>
+		<!-- /wp:group -->
+		<!-- wp:group {"className":"footer-widget-col","layout":{"type":"constrained"}} -->
+		<div class="wp-block-group footer-widget-col">
+			<!-- wp:shortcode -->[layarkatalog_widget_area id="footer-2"]<!-- /wp:shortcode -->
+		</div>
+		<!-- /wp:group -->
+		<!-- wp:group {"className":"footer-widget-col","layout":{"type":"constrained"}} -->
+		<div class="wp-block-group footer-widget-col">
+			<!-- wp:shortcode -->[layarkatalog_widget_area id="footer-3"]<!-- /wp:shortcode -->
+		</div>
+		<!-- /wp:group -->
+	</div>
+	<!-- /wp:group -->
 	<!-- wp:group {"align":"wide","className":"footer-inner","layout":{"type":"flex","justifyContent":"space-between","verticalAlignment":"center","flexWrap":"wrap"}} -->
 	<div class="wp-block-group alignwide footer-inner">
 		<!-- wp:group {"className":"footer-brand","layout":{"type":"constrained"}} -->

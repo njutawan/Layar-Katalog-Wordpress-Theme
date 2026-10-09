@@ -173,7 +173,7 @@
             return;
           }
           renderAllLists();
-          announce(container, 'Daftar berhasil dikosongkan.');
+          announce(container, strings.cleared || 'Daftar berhasil dikosongkan.');
         } else if (remove) {
           var removeId = Number(remove.getAttribute('data-lkc-remove-id'));
           var filtered = readItems(key).filter(function (item) { return Number(item.id) !== removeId; });
@@ -182,7 +182,7 @@
             return;
           }
           renderAllLists();
-          announce(container, strings.removed || 'Item dihapus.');
+          announce(container, strings.itemRemoved || 'Item dihapus.');
         }
       });
     });
@@ -281,9 +281,104 @@
     });
   }
 
+  function initializeVideoProgress() {
+    var progressKey = 'lkc_video_progress_v1';
+    var videos = document.querySelectorAll('[data-lk-player] video');
+    if (!videos.length) return;
+
+    function readProgress() {
+      try {
+        return JSON.parse(window.localStorage.getItem(progressKey) || '{}');
+      } catch (e) { return {}; }
+    }
+
+    function saveProgress(episodeId, time, duration) {
+      if (!episodeId || !Number.isFinite(time) || time < 5) return;
+      var data = readProgress();
+      data[episodeId] = { time: Math.floor(time), duration: Math.floor(duration), savedAt: Date.now() };
+      /* Limit to 200 entries. */
+      var keys = Object.keys(data);
+      if (keys.length > 200) {
+        keys.sort(function (a, b) { return (data[a].savedAt || 0) - (data[b].savedAt || 0); });
+        keys.slice(0, keys.length - 200).forEach(function (k) { delete data[k]; }
+        );
+      }
+      try { window.localStorage.setItem(progressKey, JSON.stringify(data)); } catch (e) {}
+    }
+
+    function formatTime(seconds) {
+      var m = Math.floor(seconds / 60);
+      var s = Math.floor(seconds % 60);
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    videos.forEach(function (video) {
+      var player = video.closest('[data-lk-player]');
+      var marker = document.querySelector('[data-lkc-history-entry]');
+      var episodeId = marker ? Number(marker.getAttribute('data-id')) : 0;
+      if (!episodeId) return;
+
+      /* Restore position. */
+      var progress = readProgress();
+      var saved = progress[episodeId];
+      if (saved && saved.time > 10 && Number.isFinite(saved.duration)) {
+        /* Only offer resume if saved position is > 10s and < 95% of duration. */
+        var pct = saved.duration > 0 ? saved.time / saved.duration : 0;
+        if (pct < 0.95) {
+          var resumeDiv = document.createElement('div');
+          resumeDiv.className = 'lkc-autoplay-overlay';
+          resumeDiv.innerHTML =
+            '<p class="lkc-autoplay-title">Lanjutkan menonton</p>' +
+            '<p class="lkc-autoplay-next">Posisi terakhir: ' + formatTime(saved.time) + '</p>' +
+            '<span class="lkc-autoplay-countdown">Klik untuk melanjutkan dari ' + formatTime(saved.time) + '</span>' +
+            '<button type="button" class="lkc-autoplay-cancel" data-lkc-resume-from="' + saved.time + '">Lanjutkan</button>' +
+            '<button type="button" class="lkc-autoplay-cancel" data-lkc-resume-start>Mulai dari awal</button>';
+          player.style.position = 'relative';
+          player.appendChild(resumeDiv);
+
+          resumeDiv.addEventListener('click', function (e) {
+            var fromBtn = e.target.closest('[data-lkc-resume-from]');
+            var startBtn = e.target.closest('[data-lkc-resume-start]');
+            if (fromBtn) {
+              video.currentTime = Number(fromBtn.getAttribute('data-lkc-resume-from'));
+              video.play().catch(function () {});
+              resumeDiv.remove();
+            } else if (startBtn) {
+              video.currentTime = 0;
+              video.play().catch(function () {});
+              resumeDiv.remove();
+            }
+          });
+        }
+      }
+
+      /* Save progress on pause and periodically. */
+      var lastSave = 0;
+      video.addEventListener('timeupdate', function () {
+        var now = Date.now();
+        if (now - lastSave > 10000 && video.currentTime > 5) {
+          lastSave = now;
+          saveProgress(episodeId, video.currentTime, video.duration || 0);
+        }
+      });
+      video.addEventListener('pause', function () {
+        saveProgress(episodeId, video.currentTime, video.duration || 0);
+      });
+      video.addEventListener('ended', function () {
+        /* Mark as complete by removing progress. */
+        try {
+          var data = readProgress();
+          delete data[episodeId];
+          window.localStorage.setItem(progressKey, JSON.stringify(data));
+        } catch (e) {}
+      });
+    });
+  }
+
   function initialize() {
     initializeLocalEngagement();
     initializeRatings();
+    initializeVideoProgress();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize);

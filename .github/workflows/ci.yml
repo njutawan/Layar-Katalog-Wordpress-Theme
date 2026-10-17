@@ -17,6 +17,9 @@ jobs:
   php:
     name: PHP 8.2 lint + security tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -66,7 +69,27 @@ jobs:
       # a time, so a check that could never pass is caught here rather than on
       # somebody's staging site.
       - name: Staging scripts against a simulated install
-        run: bash tests/wp/simulated-install.test.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          bash tests/wp/simulated-install.test.sh > /tmp/lkc-simulated.txt 2>&1
+          status=$?
+          set -e
+          cat /tmp/lkc-simulated.txt
+
+          # The raw log of a run is not always reachable, so when this fails the
+          # report is posted where it can be read: on the pull request itself.
+          if [ "$status" -ne 0 ] && [ -n "$PR_NUMBER" ] && command -v gh >/dev/null 2>&1; then
+            printf '### Simulated install: what failed on the runner\n\n```text\n' > /tmp/lkc-simulated-comment.md
+            grep -A3 '^FAIL' /tmp/lkc-simulated.txt | head -c 20000 >> /tmp/lkc-simulated-comment.md || true
+            printf '\n--- summary ---\n' >> /tmp/lkc-simulated-comment.md
+            tail -n 6 /tmp/lkc-simulated.txt >> /tmp/lkc-simulated-comment.md
+            printf '\n```\n' >> /tmp/lkc-simulated-comment.md
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/lkc-simulated-comment.md || true
+          fi
+          exit "$status"
 
   javascript:
     name: JavaScript syntax + DOM tests
@@ -154,6 +177,9 @@ jobs:
     # its base means new and edited code has to be clean while the outstanding
     # debt is worked down at its own pace - and every violation fixed on the way
     # is reported, so the trend is visible.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -232,7 +258,27 @@ jobs:
 
       - name: Fail only on violations this change introduces
         if: steps.base.outputs.sha != ''
-        run: node tests/phpcs-regression.mjs /tmp/lkc-base.json /tmp/lkc-base /tmp/lkc-head.json "$GITHUB_WORKSPACE"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          node tests/phpcs-regression.mjs /tmp/lkc-base.json /tmp/lkc-base /tmp/lkc-head.json "$GITHUB_WORKSPACE" \
+            > /tmp/lkc-standards.txt 2>&1
+          status=$?
+          set -e
+          cat /tmp/lkc-standards.txt
+
+          # Same reason as the step in the php job: when the comparison fails, the
+          # list of violations this change introduces is posted to the pull
+          # request, because that is the list somebody has to act on.
+          if [ "$status" -ne 0 ] && [ -n "$PR_NUMBER" ] && command -v gh >/dev/null 2>&1; then
+            printf '### Coding standards: violations this change introduces\n\n```text\n' > /tmp/lkc-standards-comment.md
+            head -c 50000 /tmp/lkc-standards.txt >> /tmp/lkc-standards-comment.md
+            printf '\n```\n' >> /tmp/lkc-standards-comment.md
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/lkc-standards-comment.md || true
+          fi
+          exit "$status"
 
       - name: Explain a skipped comparison
         if: steps.base.outputs.sha == ''

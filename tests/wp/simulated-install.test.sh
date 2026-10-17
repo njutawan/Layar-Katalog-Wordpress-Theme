@@ -246,9 +246,24 @@ PHPSTUB
 chmod +x "$bin/wp" "$bin/curl" "$bin/php"
 
 # The same stubs without php, to exercise the script's "no php binary" branch.
+#
+# This directory has to become the whole PATH for that run. Prepending it is not
+# enough: a machine that does have PHP installed - a CI runner, a normal
+# developer box - would find the real binary further along PATH, the skip would
+# never happen, and the branch would go untested exactly where PHP is present.
 mkdir -p "$work/bin-nophp"
 cp "$bin/wp" "$bin/curl" "$work/bin-nophp/"
 chmod +x "$work/bin-nophp/wp" "$work/bin-nophp/curl"
+for tool in awk bash basename cat chmod cp cut date dirname env find grep head id ln ls mkdir \
+	mktemp mv rm sed seq sha256sum sh sort stat tail tee tr uname uniq wc xargs; do
+	[ -e "$work/bin-nophp/$tool" ] && continue
+	for tool_dir in /usr/bin /bin /usr/local/bin /usr/sbin /sbin; do
+		if [ -x "$tool_dir/$tool" ]; then
+			ln -s "$tool_dir/$tool" "$work/bin-nophp/$tool"
+			break
+		fi
+	done
+done
 
 SMOKE="$repo/tests/wp/smoke-activate.sh"
 
@@ -258,9 +273,17 @@ SMOKE_ARGS=()
 # run_sim [BIN_DIR] [SIM_NAME=VALUE ...]
 # Runs the script against the simulation and leaves the output in $OUTPUT,
 # the exit status in $STATUS, and the failure list in $FAILURES_TEXT.
+# Set SIM_PATH_MODE=only for a run whose PATH must contain nothing but the stub
+# directory, which is what makes the "binary is not installed" branches real.
+SIM_PATH_MODE='prepend'
+
 run_sim() {
 	local sim_bin="$1"
+	local sim_path="$sim_bin:$PATH"
 	shift
+	if [ "$SIM_PATH_MODE" = 'only' ]; then
+		sim_path="$sim_bin"
+	fi
 	: >"$RATE_COUNTER"
 	: >"$WP_LOG"
 	: >"$CURL_LOG"
@@ -269,7 +292,7 @@ run_sim() {
 		-u SIM_VAPID_USABLE -u SIM_CSP_MODE -u SIM_VENDOR_CODE -u SIM_RATE_LIMIT_AFTER \
 		-u SIM_ACTIVE_PLUGINS -u SIM_ACTIVE_THEMES -u SIM_WP_VERSION -u SIM_DEBUG_NOISE \
 		-u SIM_NO_HSTS -u SIM_ACTIVATE_OUTPUT -u SIM_ENGAGEMENT_DB_VERSION -u SIM_PUSH_COLUMNS \
-		PATH="$sim_bin:$PATH" \
+		PATH="$sim_path" \
 		SIM_PLUGIN_DIR="$plugin_dir" SIM_THEME_DIR="$theme_dir" SIM_DEBUG_LOG="$debug_log" \
 		WP_LOG="$WP_LOG" CURL_LOG="$CURL_LOG" RATE_COUNTER="$RATE_COUNTER" \
 		"$@" \
@@ -536,8 +559,10 @@ run_sim "$bin"
 assert_clean 'all 7 shipped PHP files parse under PHP 8.2.33'
 assert_exit_zero 'a site whose sources all parse'
 
+SIM_PATH_MODE='only'
 run_sim "$work/bin-nophp"
 assert_skipped 'php -l over the shipped files'
+SIM_PATH_MODE='prepend'
 
 SMOKE_ARGS=(--activate)
 run_sim "$bin" SIM_ACTIVATE_OUTPUT='PHP Fatal error: Uncaught Error: Call to undefined function lkc_register_meta() in /srv/www/wp-content/plugins/layar-katalog-core/layar-katalog-core.php on line 272'

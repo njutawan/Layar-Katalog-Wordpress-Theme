@@ -241,7 +241,8 @@ jobs:
           cd /tmp/lkc-base
           find . -name '*.php' \
                -not -path './.git/*' \
-               -not -path './plugins/layar-katalog-core/vendor/*' | sort > /tmp/lkc-base-files.txt
+               -not -path './plugins/layar-katalog-core/vendor/*' \
+               -not -path './tests/*' | sort > /tmp/lkc-base-files.txt
           phpcs --standard=phpcs.xml.dist --warning-severity=0 -q \
                 --report=json --report-file=/tmp/lkc-base.json \
                 $(cat /tmp/lkc-base-files.txt) || true
@@ -251,7 +252,8 @@ jobs:
         run: |
           find . -name '*.php' \
                -not -path './.git/*' \
-               -not -path './plugins/layar-katalog-core/vendor/*' | sort > /tmp/lkc-head-files.txt
+               -not -path './plugins/layar-katalog-core/vendor/*' \
+               -not -path './tests/*' | sort > /tmp/lkc-head-files.txt
           phpcs --standard=phpcs.xml.dist --warning-severity=0 -q \
                 --report=json --report-file=/tmp/lkc-head.json \
                 $(cat /tmp/lkc-head-files.txt) || true
@@ -263,7 +265,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set +e
-          node tests/phpcs-regression.mjs /tmp/lkc-base.json /tmp/lkc-base /tmp/lkc-head.json "$GITHUB_WORKSPACE" \
+          node tests/phpcs-regression.mjs /tmp/lkc-base.json /tmp/lkc-base /tmp/lkc-head.json "$GITHUB_WORKSPACE" --detail \
             > /tmp/lkc-standards.txt 2>&1
           status=$?
           set -e

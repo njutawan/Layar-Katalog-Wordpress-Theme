@@ -43,6 +43,7 @@ function lkc_get_csp_directives() {
 
 	$policy = array(
 		'default-src'     => array( "'self'" ),
+
 		/*
 		 * 'unsafe-inline' is needed by default because the companion theme prints
 		 * administrator-supplied advertising code into wp_head, WordPress core
@@ -536,7 +537,7 @@ add_filter( 'rest_post_dispatch', 'lkc_filter_rest_cors_headers', 20, 3 );
  * @return string
  */
 function lkc_client_ip() {
-	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) wp_unslash( $_SERVER['REMOTE_ADDR'] ) : 'unknown';
+	$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
 
 	/**
 	 * Filter the client address used for rate limiting and audit hashing.

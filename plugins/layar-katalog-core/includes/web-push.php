@@ -108,7 +108,12 @@ function lkc_decrypt_secret( $stored ) {
 	return false === $plaintext ? '' : $plaintext;
 }
 
-/** Whether a stored secret is an envelope that can no longer be decrypted. */
+/**
+ * Whether a stored secret is an envelope that can no longer be decrypted.
+ *
+ * @param string $stored Value as it sits in wp_options.
+ * @return bool True when the salts can no longer open it.
+ */
 function lkc_secret_is_unreadable( $stored ) {
 	$stored = (string) $stored;
 
@@ -287,7 +292,7 @@ function lkc_handle_generate_vapid_keys() {
 		);
 		update_option( 'lkc_push_options', $options, false );
 		global $wpdb;
-		$removed = absint( $wpdb->query( 'DELETE FROM ' . lkc_push_subscriptions_table_name() ) );
+		$removed = absint( $wpdb->query( 'DELETE FROM ' . lkc_push_subscriptions_table_name() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- the table name comes from $wpdb->prefix and no user input reaches this query.
 		lkc_write_audit_log(
 			'vapid_keys_rotated',
 			array(
@@ -310,7 +315,7 @@ function lkc_handle_clear_push_subscriptions() {
 	}
 	check_admin_referer( 'lkc_clear_push_subscriptions' );
 	global $wpdb;
-	$removed = absint( $wpdb->query( 'DELETE FROM ' . lkc_push_subscriptions_table_name() ) );
+	$removed = absint( $wpdb->query( 'DELETE FROM ' . lkc_push_subscriptions_table_name() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- the table name comes from $wpdb->prefix and no user input reaches this query.
 	lkc_write_audit_log(
 		'push_subscriptions_cleared',
 		array(
@@ -329,7 +334,7 @@ function lkc_render_push_settings_page() {
 	}
 	$options = lkc_get_push_settings();
 	global $wpdb;
-	$count = absint( $wpdb->get_var( 'SELECT COUNT(*) FROM ' . lkc_push_subscriptions_table_name() ) );
+	$count = absint( $wpdb->get_var( 'SELECT COUNT(*) FROM ' . lkc_push_subscriptions_table_name() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- the table name comes from $wpdb->prefix and no user input reaches this query.
 	$notices = array(
 		'saved'                 => __( 'Pengaturan disimpan dan notifikasi aktif.', 'layar-katalog-core' ),
 		'saved_disabled'        => __( 'Pengaturan disimpan. Notifikasi belum aktif; buat kunci VAPID dan aktifkan fitur.', 'layar-katalog-core' ),
@@ -434,22 +439,37 @@ function lkc_push_subscription_table_is_full() {
 		return false;
 	}
 	global $wpdb;
-	$count = absint( $wpdb->get_var( 'SELECT COUNT(*) FROM ' . lkc_push_subscriptions_table_name() ) );
+	$count = absint( $wpdb->get_var( 'SELECT COUNT(*) FROM ' . lkc_push_subscriptions_table_name() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- the table name comes from $wpdb->prefix and no user input reaches this query.
 	return $count >= $max;
 }
 
-/** Validate a REST argument as a known public browser push endpoint. */
+/**
+ * Validate a REST argument as a known public browser push endpoint.
+ *
+ * @param mixed $value Endpoint URL from the request.
+ * @return bool True when the host is a browser push service.
+ */
 function lkc_validate_push_endpoint_arg( $value ) {
 	return is_string( $value ) && false !== lkc_validate_push_endpoint( $value );
 }
 
-/** Reduce a REST endpoint argument to the exact value that gets stored. */
+/**
+ * Reduce a REST endpoint argument to the exact value that gets stored.
+ *
+ * @param mixed $value Endpoint URL from the request.
+ * @return string Normalised endpoint, or an empty string when invalid.
+ */
 function lkc_sanitize_push_endpoint_arg( $value ) {
 	$endpoint = lkc_validate_push_endpoint( $value );
 	return $endpoint ? $endpoint : '';
 }
 
-/** Validate the browser key pair that accompanies a subscription. */
+/**
+ * Validate the browser key pair that accompanies a subscription.
+ *
+ * @param mixed $value `keys` argument from the request.
+ * @return bool True when both keys are present and decodable.
+ */
 function lkc_validate_push_keys_arg( $value ) {
 	if ( ! is_array( $value ) || empty( $value['p256dh'] ) || empty( $value['auth'] ) ) {
 		return new WP_Error( 'lkc_push_invalid_keys', __( 'Kunci langganan browser tidak lengkap.', 'layar-katalog-core' ), array( 'status' => 400 ) );
@@ -457,7 +477,12 @@ function lkc_validate_push_keys_arg( $value ) {
 	return true;
 }
 
-/** Accept only the two content encodings the push library supports. */
+/**
+ * Accept only the two content encodings the push library supports.
+ *
+ * @param string $value Encoding name from the request.
+ * @return string One of the two supported encodings.
+ */
 function lkc_sanitize_push_encoding_arg( $value ) {
 	return ( 'aesgcm' === $value ) ? 'aesgcm' : 'aes128gcm';
 }
@@ -523,9 +548,21 @@ function lkc_rest_get_push_key() {
 	if ( ! lkc_push_is_configured() ) {
 		return new WP_Error( 'lkc_push_unavailable', __( 'Notifikasi belum aktif.', 'layar-katalog-core' ), array( 'status' => 503 ) );
 	}
-	return rest_ensure_response( array( 'enabled' => true, 'publicKey' => $options['public_key'] ) );
+	return rest_ensure_response(
+		array(
+			'enabled'   => true,
+			'publicKey' => $options['public_key'],
+		)
+	);
 }
 
+/**
+ * Decode a base64url key the browser sent and check its length.
+ *
+ * @param string $value           Raw base64url value from the request.
+ * @param int    $expected_length Byte length the decoded key must have.
+ * @return string Raw key bytes, or an empty string when it does not fit.
+ */
 function lkc_decode_base64url_key( $value, $expected_length ) {
 	if ( ! is_string( $value ) || strlen( $value ) > 256 || ! preg_match( '/^[A-Za-z0-9_-]+$/', $value ) ) {
 		return false;
@@ -546,7 +583,13 @@ function lkc_rest_save_push_subscription( $request ) {
 	$p256dh   = isset( $keys['p256dh'] ) ? lkc_decode_base64url_key( $keys['p256dh'], 65 ) : false;
 	$auth     = isset( $keys['auth'] ) ? lkc_decode_base64url_key( $keys['auth'], 16 ) : false;
 	if ( ! $endpoint || ! $p256dh || ! $auth ) {
-		lkc_write_audit_log( 'push_subscription_rejected', array( 'object_type' => 'push_subscription', 'detail' => 'invalid_payload' ) );
+		lkc_write_audit_log(
+			'push_subscription_rejected',
+			array(
+				'object_type' => 'push_subscription',
+				'detail'      => 'invalid_payload',
+			)
+		);
 		return new WP_Error( 'lkc_push_invalid_subscription', __( 'Data langganan browser tidak valid.', 'layar-katalog-core' ), array( 'status' => 400 ) );
 	}
 	$encoding = lkc_sanitize_push_encoding_arg( $request->get_param( 'contentEncoding' ) );
@@ -559,10 +602,16 @@ function lkc_rest_save_push_subscription( $request ) {
 	 * existing subscriber can always refresh its keys.
 	 */
 	$known = $wpdb->get_var(
-		$wpdb->prepare( "SELECT subscription_hash FROM {$table} WHERE subscription_hash = %s", $hash )
+		$wpdb->prepare( "SELECT subscription_hash FROM {$table} WHERE subscription_hash = %s", $hash ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name comes from $wpdb->prefix and is not user input.
 	);
 	if ( ! $known && lkc_push_subscription_table_is_full() ) {
-		lkc_write_audit_log( 'push_subscription_rejected', array( 'object_type' => 'push_subscription', 'detail' => 'table_full' ) );
+		lkc_write_audit_log(
+			'push_subscription_rejected',
+			array(
+				'object_type' => 'push_subscription',
+				'detail'      => 'table_full',
+			)
+		);
 		return new WP_Error( 'lkc_push_full', __( 'Pendaftaran notifikasi sedang penuh. Silakan coba lagi nanti.', 'layar-katalog-core' ), array( 'status' => 503 ) );
 	}
 
@@ -649,7 +698,7 @@ function lkc_schedule_new_episode_push( $new_status, $old_status, $post ) {
 		return;
 	}
 	global $wpdb;
-	$has_subscribers = $wpdb->get_var( 'SELECT subscription_hash FROM ' . lkc_push_subscriptions_table_name() . ' LIMIT 1' );
+	$has_subscribers = $wpdb->get_var( 'SELECT subscription_hash FROM ' . lkc_push_subscriptions_table_name() . ' LIMIT 1' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- the table name comes from $wpdb->prefix and no user input reaches this query.
 	if ( ! $has_subscribers ) {
 		return;
 	}
@@ -816,7 +865,13 @@ function lkc_process_episode_push_batch( $episode_id, $after_hash = '' ) {
 
 	$settings = lkc_get_push_settings();
 	try {
-		$http_client = new \GuzzleHttp\Client( array( 'timeout' => 5, 'connect_timeout' => 3, 'allow_redirects' => false ) );
+		$http_client = new \GuzzleHttp\Client(
+			array(
+				'timeout'         => 5,
+				'connect_timeout' => 3,
+				'allow_redirects' => false,
+			)
+		);
 		$web_push    = new \Minishlink\WebPush\WebPush(
 			array(
 				'VAPID' => array(
@@ -858,7 +913,14 @@ function lkc_process_episode_push_batch( $episode_id, $after_hash = '' ) {
 					'contentEncoding' => $row->content_encoding,
 				)
 			);
-			$report = $web_push->sendOneNotification( $subscription, $payload, array( 'TTL' => 86400, 'urgency' => 'normal' ) );
+			$report = $web_push->sendOneNotification(
+				$subscription,
+				$payload,
+				array(
+					'TTL'     => 86400,
+					'urgency' => 'normal',
+				)
+			);
 			if ( $report->isSubscriptionExpired() ) {
 				$wpdb->delete( $table, array( 'subscription_hash' => $row->subscription_hash ), array( '%s' ) );
 			} elseif ( method_exists( $report, 'isSuccess' ) && ! $report->isSuccess() ) {

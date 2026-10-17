@@ -20,9 +20,18 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 
-const args = process.argv.slice(2);
+const given = process.argv.slice(2);
+
+/*
+ * --detail repeats the new violations with file:line:column, which is what an
+ * editor needs. The comparison itself stays line-number free on purpose: after a
+ * reformat, matching by line would make everything below the edit look new.
+ */
+const detail = given.includes('--detail');
+const args = given.filter((value) => value !== '--detail');
+
 if (args.length !== 4) {
-	process.stderr.write('usage: node tests/phpcs-regression.mjs <base.json> <base-root> <head.json> <head-root>\n');
+	process.stderr.write('usage: node tests/phpcs-regression.mjs <base.json> <base-root> <head.json> <head-root> [--detail]\n');
 	process.exit(2);
 }
 
@@ -146,6 +155,37 @@ for (const item of regressions) {
 	}
 	const times = item.count > 1 ? `  x${item.count}` : '';
 	process.stdout.write(`    ${item.source}: ${item.message}${times}\n`);
+}
+
+if (detail) {
+	const wanted = new Map();
+	for (const item of regressions) {
+		if (!wanted.has(item.path)) {
+			wanted.set(item.path, new Set());
+		}
+		wanted.get(item.path).add(`${item.source}\u0000${item.message}`);
+	}
+
+	const report = JSON.parse(readFileSync(headFile, 'utf8'));
+	const prefix = headRoot.endsWith('/') ? headRoot : `${headRoot}/`;
+
+	process.stdout.write('\nWhere they are:\n');
+	for (const [absolute, entry] of Object.entries(report.files || {})) {
+		const relative = absolute.startsWith(prefix) ? absolute.slice(prefix.length) : absolute;
+		const signatures = wanted.get(relative);
+		if (!signatures) {
+			continue;
+		}
+		for (const message of entry.messages || []) {
+			if (message.type && message.type.toUpperCase() !== 'ERROR') {
+				continue;
+			}
+			if (!signatures.has(`${message.source || 'unknown'}\u0000${message.message || ''}`)) {
+				continue;
+			}
+			process.stdout.write(`  ${relative}:${message.line}:${message.column} ${message.source}\n`);
+		}
+	}
 }
 
 process.stdout.write('\nFix these, or - for a deliberate, documented exception - add a phpcs:ignore comment explaining why.\n');

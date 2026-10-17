@@ -622,7 +622,7 @@ function lkc_is_allowed_origin( $origin ) {
 	$allowed = (array) apply_filters( 'lkc_allowed_cors_origins', array( home_url() ) );
 
 	foreach ( $allowed as $candidate ) {
-		if ( '' !== $origin && $origin === lkc_normalize_origin( $candidate ) ) {
+		if ( '' !== $origin && lkc_normalize_origin( $candidate ) === $origin ) {
 			return true;
 		}
 	}

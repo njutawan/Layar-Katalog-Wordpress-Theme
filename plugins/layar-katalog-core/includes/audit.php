@@ -643,9 +643,15 @@ function lkc_build_csp_allowlist_snippet( $grouped, $current_directives = array(
 	}
 	if ( $comments ) {
 		$snippet[] = '';
-		$snippet   = array_merge( $snippet, array_map( static function ( $comment ) {
-			return "\t" . $comment;
-		}, $comments ) );
+		$snippet   = array_merge(
+			$snippet,
+			array_map(
+				static function ( $comment ) {
+					return "\t" . $comment;
+				},
+				$comments
+			)
+		);
 	}
 
 	$snippet[] = "\t" . 'return $policy;';
@@ -880,10 +886,7 @@ function lkc_render_security_log_page() {
 					<?php if ( $paged > 1 ) : ?>
 						<a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $paged - 1, lkc_security_log_tab_url( 'audit' ) ) ); ?>"><?php esc_html_e( '← Lebih baru', 'layar-katalog-core' ); ?></a>
 					<?php endif; ?>
-					<span class="displaying-num"><?php
-					/* translators: 1: current page number, 2: total pages, 3: total entries. */
-					echo esc_html( sprintf( __( 'Halaman %1$d dari %2$d (%3$s entri)', 'layar-katalog-core' ), $paged, $pages, number_format_i18n( $total ) ) );
-				?></span>
+					<span class="displaying-num"><?php echo esc_html( sprintf( /* translators: 1: current page number, 2: total pages, 3: total entries. */ __( 'Halaman %1$d dari %2$d (%3$s entri)', 'layar-katalog-core' ), $paged, $pages, number_format_i18n( $total ) ) ); ?></span>
 					<?php if ( $paged < $pages ) : ?>
 						<a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $paged + 1, lkc_security_log_tab_url( 'audit' ) ) ); ?>"><?php esc_html_e( 'Lebih lama →', 'layar-katalog-core' ); ?></a>
 					<?php endif; ?>
@@ -895,10 +898,7 @@ function lkc_render_security_log_page() {
 				<?php wp_nonce_field( 'lkc_clear_audit_log' ); ?>
 				<?php submit_button( __( 'Hapus log audit', 'layar-katalog-core' ), 'delete', 'submit', false ); ?>
 			</form>
-			<p class="description"><?php
-				/* translators: %d: retention period in days. */
-				echo esc_html( sprintf( __( 'Entri lebih tua dari %d hari dihapus otomatis setiap hari oleh WP-Cron.', 'layar-katalog-core' ), absint( apply_filters( 'lkc_audit_log_retention_days', 90 ) ) ) );
-			?></p>
+			<p class="description"><?php echo esc_html( sprintf( /* translators: %d: retention period in days. */ __( 'Entri lebih tua dari %d hari dihapus otomatis setiap hari oleh WP-Cron.', 'layar-katalog-core' ), absint( apply_filters( 'lkc_audit_log_retention_days', 90 ) ) ) ); ?></p>
 
 		<?php else : ?>
 			<p>
@@ -948,10 +948,7 @@ function lkc_render_security_log_page() {
 					<?php endif; ?>
 				</tbody>
 			</table>
-			<p class="description"><?php
-				/* translators: 1: number of distinct violation patterns stored, 2: the ceiling the collector keeps. */
-				echo esc_html( sprintf( __( '%1$s pola pelanggaran berbeda tersimpan (maksimum %2$s; sisanya tetap dihitung pada pola yang sudah ada).', 'layar-katalog-core' ), number_format_i18n( $report_total ), number_format_i18n( absint( apply_filters( 'lkc_csp_report_max_rows', 500 ) ) ) ) );
-			?></p>
+			<p class="description"><?php echo esc_html( sprintf( /* translators: 1: number of distinct violation patterns stored, 2: the ceiling the collector keeps. */ __( '%1$s pola pelanggaran berbeda tersimpan (maksimum %2$s; sisanya tetap dihitung pada pola yang sudah ada).', 'layar-katalog-core' ), number_format_i18n( $report_total ), number_format_i18n( absint( apply_filters( 'lkc_csp_report_max_rows', 500 ) ) ) ) ); ?></p>
 
 			<?php
 			$csp_grouped = lkc_group_csp_reports( $report_rows );

@@ -60,6 +60,14 @@ jobs:
       - name: Staging script guards
         run: bash tests/wp/guards.test.sh
 
+      # The guards prove the staging scripts refuse dangerous invocations; this
+      # proves their checks work. A simulated WordPress answers every wp, mysql,
+      # curl and php call they make, healthy first and then degraded one thing at
+      # a time, so a check that could never pass is caught here rather than on
+      # somebody's staging site.
+      - name: Staging scripts against a simulated install
+        run: bash tests/wp/simulated-install.test.sh
+
   javascript:
     name: JavaScript syntax + DOM tests
     runs-on: ubuntu-latest

@@ -15,6 +15,7 @@ node js/phpcs-regression.test.js       # the comparator that makes the standards
 
 # Bash (no dependencies)
 bash wp/guards.test.sh                 # the staging scripts refuse dangerous invocations
+bash wp/simulated-install.test.sh      # and their checks work, against a simulated WordPress
 
 # JavaScript DOM tests and the WebAssembly PHP tools (needs jsdom and @php-wasm/node)
 npm ci                                 # inside tests/; a lock file is committed
@@ -42,6 +43,7 @@ node php/lint-phpwasm.mjs 8.2          # parse-check every project PHP file with
 | `js/player-dom-xss.test.js` | 22 | That a hostile episode title stays text, that `javascript:` and `data:` navigation targets are refused, and that switching video source keeps exactly one copy of each subtitle track. |
 | `js/csp-snippet-review.test.js` | 105 | The reviewer that judges a CSP snippet before it is pasted into `mu-plugins`: the static refusals (filesystem, network, shell, `eval`, superglobals, `$wpdb`, a closing tag, a wholesale `$policy =`), the structural ones (no `<?php`, no `add_filter`, a tag the plugin never applies, a missing `return $policy`), the diff of the header the plugin would really send, and one end-to-end run of all eight fixtures through a real PHP 8.2 — including a snippet that survives report-only mode and only shows its hand under `lkc_csp_strict`. |
 | `js/phpcs-regression.test.js` | 22 | The comparator behind the blocking coding-standards job: line-number drift is not a new violation, a repeated violation is counted per occurrence, warnings are not errors, a deleted file counts as debt removed, and bad input exits 2 instead of passing silently. |
+| `wp/simulated-install.test.sh` | 118 | Both staging scripts, run end to end against a WordPress that is not there: a fake `wp`, `mysql`, `curl` and `php -l` answer every call they make. First healthy (the smoke test's own 37 checks all fire and the drill prints its log row), then degraded one thing at a time — a missing table, an unscheduled cron job, an unregistered route, a plaintext or orphaned VAPID key, no CSP header, no HSTS, a reachable `vendor/`, a rate limiter that never answers 429 or answers it too late, an inactive plugin or theme, a root `index.php` in the block theme, a file that does not parse, a fatal during the activation cycle, notices in `debug.log`, an incomplete restore, rotated salts, a backup missing salt definitions — asserting each time that the right check is blamed and no other one is. Also asserts the drill never points `mysql` at the live database, always uses the 0600 credentials file, and honours `--activate`, `--skip-http`, `--skip-rate-limit`, `--verify-only`, `--keep` and `--keep-dump`. |
 | `wp/guards.test.sh` | 24 | The two staging scripts abort before touching anything when the target database is the live one, when the name contains shell metacharacters, when the drop was not confirmed by name, or when the plugin would be deactivated without `--activate`. Every case asserts no `mysql` command was issued. |
 | `php/lint-phpwasm.mjs` | per file | Every `.php` under the project (excluding `vendor/`) parses. This is the check that found a fatal parse error in the plugin's main file — see finding F-15 in [`../docs/SECURITY-AUDIT.md`](../docs/SECURITY-AUDIT.md). |
 
@@ -122,7 +124,15 @@ bash tests/wp/rehearse-restore.sh --target-db=lkc_drill_2026q4 --yes-drop=lkc_dr
 
 `rehearse-restore.sh` performs the quarterly drill from [`../docs/BACKUP-RESTORE.md`](../docs/BACKUP-RESTORE.md) and prints the log row for it. It drops and recreates a scratch database, so it refuses to run unless the target name is given twice — once as `--target-db`, once as `--yes-drop` — and it aborts outright if that name is the live database. `guards.test.sh` runs those refusals in CI with a stubbed `wp` and `mysql`.
 
-Neither script is part of `npm test`; both need a real WordPress install.
+Neither script is part of `npm test`; both need a real WordPress install to do their actual job.
+
+What *can* be tested without one is the scripts themselves, and `wp/simulated-install.test.sh` does that. It builds a simulated install in a temporary directory — a plugin and theme tree, a `debug.log`, two `wp-config.php` files whose salts can be made to disagree — and puts a fake `wp`, `mysql`, `curl` and `php` on the `PATH`. Every answer comes from a `SIM_*` variable with a healthy default, so each test degrades exactly one thing:
+
+```bash
+bash wp/simulated-install.test.sh          # 118 assertions, about ten seconds
+```
+
+The stubs encode what WP-CLI, `mysql` and `curl` are documented to output. That proves the scripts' logic — parsing, thresholds, ordering, which check blames which problem, what they refuse to touch — and it cannot prove a real site behaves like the simulation. Reading the two together: the guards say the scripts will not hurt anything, the simulation says they will actually notice something is wrong, and running them on staging is still the only thing that says the site is fine.
 
 ## Differential mode
 

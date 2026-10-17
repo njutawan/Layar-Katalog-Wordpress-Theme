@@ -15,6 +15,7 @@
 		"test:sw:baseline": "node js/service-worker.test.js --previous",
 		"test:standards": "node js/phpcs-regression.test.js",
 		"test:wp:guards": "bash wp/guards.test.sh",
+		"test:wp:simulate": "bash wp/simulated-install.test.sh",
 		"test:player": "node js/player-dom-xss.test.js",
 		"test:player:baseline": "node js/player-dom-xss.test.js --previous",
 		"test:php": "php php/security.test.php",

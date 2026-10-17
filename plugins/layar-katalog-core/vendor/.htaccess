@@ -1,0 +1,17 @@
+# Bundled Composer dependencies are implementation detail, not web content.
+# Nothing here should ever be served: installed.json and composer.lock disclose
+# exact package versions, which tells an attacker which advisories to try.
+#
+# Apache 2.4
+<IfModule mod_authz_core.c>
+	Require all denied
+</IfModule>
+
+# Apache 2.2
+<IfModule !mod_authz_core.c>
+	Order deny,allow
+	Deny from all
+</IfModule>
+
+# nginx ignores .htaccess. Add this to the server block instead:
+#   location ~* /wp-content/plugins/layar-katalog-core/vendor/ { deny all; return 404; }

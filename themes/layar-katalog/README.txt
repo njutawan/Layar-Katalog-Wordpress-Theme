@@ -1,5 +1,5 @@
 LAYAR KATALOG — TEMA BLOK WORDPRESS
-Versi: 1.6.1
+Versi: 1.7.0
 Lisensi: GPL-2.0-or-later
 
 Tema blok editorial orisinal untuk katalog film, animasi, serial, rekomendasi, dan ulasan. Tema tidak menyalin logo, aset, teks, kode, atau desain khas situs lain. Tidak ada gambar/video bawaan.
@@ -33,6 +33,12 @@ PENGATURAN IKLAN
 - Setiap slot memiliki pengaturan tinggi minimum area konten (0–1200 px). Isi sesuai ukuran unit penyedia agar membantu mengurangi layout shift; ruang minimum tidak mencegah shift jika materi iklan yang dimuat lebih tinggi.
 - Kode JavaScript/iframe hanya dapat disimpan oleh akun dengan hak `unfiltered_html` (umumnya Administrator di WordPress single-site). Akun tanpa hak tersebut hanya dapat menyimpan HTML yang diizinkan WordPress. Gunakan kode dari penyedia tepercaya dan kelola persetujuan cookie/privasi secara terpisah.
 
+KEAMANAN & CONTENT-SECURITY-POLICY
+- Tema ini kompatibel dengan mode CSP ketat plugin Core (filter `lkc_csp_strict`). Semua keluaran inline milik tema — blok gaya Customizer, skrip `wp_footer` yang memberi id pada `<main>`, dan kode iklan yang Anda tempel — otomatis diberi nonce permintaan itu, sehingga `'unsafe-inline'` dapat dilepas tanpa merusak tampilan maupun iklan.
+- Lebar kolom hero beranda dipindah dari atribut `style="flex-basis:…"` di `templates/front-page.html` ke aturan `.wp-block-column.hero-copy` / `.wp-block-column.hero-side` di `style.css`. Atribut gaya inline tidak dapat membawa nonce, jadi selama masih ada satu saja di template, `style-src` tidak akan pernah bisa lepas dari `'unsafe-inline'`. Tampilan tidak berubah, termasuk penumpukan kolom di layar kecil.
+- Konsekuensi mode ketat untuk kode iklan: loader eksternal (`<script src="…">`) tetap harus didaftarkan domainnya lewat filter `lkc_content_security_policy` — snippet-nya disusun otomatis di Alat > Log Keamanan > tab CSP. Skrip yang disuntikkan penyedia iklan pada runtime akan muncul sebagai pelanggaran di tab itu.
+- Mode ketat membuat HTML berbeda tiap permintaan (nonce), jadi tidak kompatibel dengan cache halaman penuh kecuali Anda menyediakan nonce stabil lewat filter `lkc_csp_nonce`.
+
 SEO
 - Plugin Core mengeluarkan metadata SEO dan sosial, breadcrumb terlihat/JSON-LD, serta schema Website, CreativeWork/Movie/TVSeries, TVEpisode, dan BreadcrumbList.
 - Judul/deskripsi SEO custom tersedia untuk Katalog/Episode; bila kosong, konten dan tagline dipakai sebagai fallback.
@@ -41,6 +47,6 @@ SEO
 - WordPress membuat sitemap di /wp-sitemap.xml (hosting perlu ekstensi PHP SimpleXML). Pastikan situs tidak disetel untuk mencegah indexing sebelum peluncuran.
 
 BATASAN PLAYER & DATA
-- Player menggunakan elemen HTML5 dan menerima sampai tiga URL langsung HTTP/HTTPS berakhiran .mp4 atau .webm. Embed/iframe dan kode JavaScript pihak ketiga tidak diterima.
+- Player menggunakan elemen HTML5 dan menerima sampai tiga URL langsung HTTPS berakhiran .mp4 atau .webm. Sejak plugin Core 1.6.0 URL `http://` ditolak (browser memblokirnya sebagai mixed content di situs HTTPS); sumber internal tanpa TLS dapat diizinkan kembali lewat filter `lkc_allow_insecure_media_urls`, dan media dapat dikunci ke host tertentu lewat `lkc_allowed_media_hosts`. Embed/iframe dan kode JavaScript pihak ketiga tidak diterima.
 - Gunakan media yang Anda miliki atau berhak tayangkan; periksa lisensi, privasi, bandwidth, hotlink, dan kapasitas hosting.
 - Tema dan plugin adalah dua ZIP terpisah. Plugin menyimpan tipe konten dan metadata sehingga data tetap ada saat tema diganti. Sebaiknya buat cadangan dan uji di staging sebelum produksi.

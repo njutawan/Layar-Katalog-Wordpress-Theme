@@ -9,6 +9,67 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Add a CSP nonce attribute to every inline <script>/<style> tag in raw markup.
+ *
+ * Pure helper kept separate from `layarkatalog_stamp_csp_nonce()` so it can be
+ * tested without WordPress. Tags that already carry a nonce, a `src` or an
+ * `href` are left alone. The opening tag is matched up to the first `>`; a tag
+ * whose attribute value itself contains `>` is not rewritten, which under a
+ * report-only policy only produces another report rather than a broken page.
+ *
+ * @param string $html  Markup that may contain inline script or style tags.
+ * @param string $nonce Nonce value, restricted to the URL-safe base64 alphabet.
+ * @return string Markup with a nonce attribute on tags that did not have one.
+ */
+function layarkatalog_add_csp_nonce_to_inline_tags( $html, $nonce ) {
+	$html  = (string) $html;
+	$nonce = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $nonce );
+
+	if ( '' === $html || '' === $nonce ) {
+		return $html;
+	}
+
+	$stamped = preg_replace_callback(
+		'#<(script|style)(\s[^>]*)?>#i',
+		static function ( $matches ) use ( $nonce ) {
+			$attributes = isset( $matches[2] ) ? $matches[2] : '';
+			/* External resources are matched by URL, so a nonce on them is only noise. */
+			if ( preg_match( '/(?:^|\s)(?:nonce|src|href)\s*=/i', $attributes ) ) {
+				return $matches[0];
+			}
+			return '<' . $matches[1] . ' nonce="' . esc_attr( $nonce ) . '"' . $attributes . '>';
+		},
+		$html
+	);
+
+	return null === $stamped ? $html : $stamped;
+}
+
+/**
+ * Stamp the companion plugin's CSP nonce on inline tags when strict mode is on.
+ *
+ * Administrator-supplied advertising code is echoed as raw markup, so it never
+ * passes through `wp_script_attributes` and would be blocked by a strict policy.
+ * This gives it the same nonce the plugin put in the header. When the plugin is
+ * inactive, or strict mode is off, the markup is returned untouched.
+ *
+ * @param string $html Raw markup about to be printed.
+ * @return string
+ */
+function layarkatalog_stamp_csp_nonce( $html ) {
+	if ( '' === $html || ! function_exists( 'lkc_is_csp_strict' ) || ! lkc_is_csp_strict() ) {
+		return $html;
+	}
+
+	$nonce = function_exists( 'lkc_get_csp_nonce' ) ? lkc_get_csp_nonce() : '';
+	if ( '' === $nonce ) {
+		return $html;
+	}
+
+	return layarkatalog_add_csp_nonce_to_inline_tags( $html, $nonce );
+}
+
 function layarkatalog_setup() {
 	add_theme_support( 'title-tag' );
 	add_theme_support( 'post-thumbnails' );
@@ -95,17 +156,19 @@ add_shortcode( 'layarkatalog_custom_logo', 'layarkatalog_custom_logo_shortcode' 
  * Runs once on wp_footer to avoid dependencies on template markup.
  */
 function layarkatalog_ensure_main_content_id() {
-	?>
-	<script>
-	(function () {
-		'use strict';
-		var main = document.querySelector( 'main' );
-		if ( main && ! main.id ) {
-			main.id = 'main-content';
-		}
-	})();
-	</script>
-	<?php
+	$script = <<<'HTML'
+<script>
+(function () {
+	'use strict';
+	var main = document.querySelector( 'main' );
+	if ( main && ! main.id ) {
+		main.id = 'main-content';
+	}
+})();
+</script>
+HTML;
+
+	echo layarkatalog_stamp_csp_nonce( $script ) . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static markup, nonce attribute is escaped by the helper.
 }
 add_action( 'wp_footer', 'layarkatalog_ensure_main_content_id', 1 );
 
@@ -281,7 +344,7 @@ function layarkatalog_customizer_css() {
 	}
 
 	if ( $css ) {
-		echo '<style id="layarkatalog-customizer-css">' . $css . '</style>' . "\n";
+		echo layarkatalog_stamp_csp_nonce( '<style id="layarkatalog-customizer-css">' . $css . '</style>' ) . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- values escaped above, nonce attribute escaped by the helper.
 	}
 }
 add_action( 'wp_head', 'layarkatalog_customizer_css', 4 );
@@ -348,7 +411,8 @@ function layarkatalog_enqueue_google_fonts() {
 	if ( ! $font ) {
 		return;
 	}
-	$urls = array();
+	$version = wp_get_theme()->get( 'Version' );
+	$urls    = array();
 
 	$presets = array(
 		'playfair'  => 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700',
@@ -383,6 +447,35 @@ function layarkatalog_enqueue_google_fonts() {
 	wp_localize_script( 'layarkatalog-font-loader', 'LKFonts', array( 'urls' => $urls ) );
 }
 add_action( 'wp_enqueue_scripts', 'layarkatalog_enqueue_google_fonts', 5 );
+
+/**
+ * Add the Google Fonts origins to the plugin's Content-Security-Policy.
+ *
+ * The companion plugin ships a report-only CSP that only allows 'self', so the
+ * two origins this theme loads fonts from are declared here, and only when a
+ * Google Font is actually selected in the Customizer.
+ *
+ * @param array $policy CSP directives keyed by directive name.
+ * @return array
+ */
+function layarkatalog_allow_font_origins_in_csp( $policy ) {
+	if ( ! is_array( $policy ) || ! get_theme_mod( 'layarkatalog_google_font', '' ) ) {
+		return $policy;
+	}
+
+	$additions = array(
+		'style-src' => array( 'https://fonts.googleapis.com' ),
+		'font-src'  => array( 'https://fonts.gstatic.com' ),
+	);
+
+	foreach ( $additions as $directive => $origins ) {
+		$current            = isset( $policy[ $directive ] ) && is_array( $policy[ $directive ] ) ? $policy[ $directive ] : array();
+		$policy[ $directive ] = array_values( array_unique( array_merge( $current, $origins ) ) );
+	}
+
+	return $policy;
+}
+add_filter( 'lkc_content_security_policy', 'layarkatalog_allow_font_origins_in_csp' );
 
 add_action( 'after_setup_theme', 'layarkatalog_setup' );
 
@@ -574,7 +667,7 @@ function layarkatalog_output_global_ad_code() {
 	$settings = layarkatalog_get_ad_settings();
 	$global   = $settings['global_head'];
 	if ( $global['enabled'] && trim( $global['code'] ) ) {
-		echo "\n" . $global['code'] . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- saved by an administrator with settings capability.
+		echo "\n" . layarkatalog_stamp_csp_nonce( $global['code'] ) . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- saved by an administrator with settings capability; the nonce attribute is escaped by the helper.
 	}
 }
 add_action( 'wp_head', 'layarkatalog_output_global_ad_code', 1 );
@@ -597,6 +690,55 @@ function layarkatalog_ad_slot_shortcode( $atts = array() ) {
 	$location   = layarkatalog_ad_locations()[ $slot ];
 	$min_height = isset( $ad['min_height'] ) ? min( 1200, absint( $ad['min_height'] ) ) : 0;
 	$height_css = $min_height ? ' style="min-height:' . $min_height . 'px"' : '';
-	return '<aside class="lk-ad-slot lk-ad-slot--' . esc_attr( $slot ) . '" aria-label="' . esc_attr( sprintf( __( 'Iklan — %s', 'layar-katalog' ), $location['label'] ) ) . '"><span class="lk-ad-slot__label">' . esc_html__( 'Iklan', 'layar-katalog' ) . '</span><div class="lk-ad-slot__content"' . $height_css . '>' . $ad['code'] . '</div></aside>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- trusted ad code is capability-gated and sanitized on save.
+	$markup = '<aside class="lk-ad-slot lk-ad-slot--' . esc_attr( $slot ) . '" aria-label="' . esc_attr( sprintf( __( 'Iklan — %s', 'layar-katalog' ), $location['label'] ) ) . '"><span class="lk-ad-slot__label">' . esc_html__( 'Iklan', 'layar-katalog' ) . '</span><div class="lk-ad-slot__content"' . $height_css . '>' . $ad['code'] . '</div></aside>';
+
+	return layarkatalog_stamp_csp_nonce( $markup ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- trusted ad code is capability-gated and sanitized on save.
 }
 add_shortcode( 'layarkatalog_ad_slot', 'layarkatalog_ad_slot_shortcode' );
+
+/**
+ * Record advertising-code changes in the plugin's security audit log.
+ *
+ * Ad code executes JavaScript on every page that renders it, so a change is a
+ * security-relevant event. Only the affected slot keys are logged, never the
+ * code itself.
+ *
+ * @param mixed $old_value Previous option value, or the option name on insert.
+ * @param mixed $new_value Stored option value.
+ */
+function layarkatalog_audit_ad_code_change( $old_value, $new_value ) {
+	if ( ! function_exists( 'lkc_write_audit_log' ) ) {
+		return;
+	}
+
+	/* add_option_{$option} passes the option name first, not a previous value. */
+	$old     = is_array( $old_value ) ? $old_value : array();
+	$new     = is_array( $new_value ) ? $new_value : array();
+	$changed = array();
+
+	$old_global = isset( $old['global_head']['code'] ) ? (string) $old['global_head']['code'] : '';
+	$new_global = isset( $new['global_head']['code'] ) ? (string) $new['global_head']['code'] : '';
+	if ( $old_global !== $new_global ) {
+		$changed[] = 'global_head';
+	}
+
+	foreach ( array_keys( layarkatalog_ad_locations() ) as $key ) {
+		$old_code = isset( $old['slots'][ $key ]['code'] ) ? (string) $old['slots'][ $key ]['code'] : '';
+		$new_code = isset( $new['slots'][ $key ]['code'] ) ? (string) $new['slots'][ $key ]['code'] : '';
+		if ( $old_code !== $new_code ) {
+			$changed[] = $key;
+		}
+	}
+
+	if ( $changed ) {
+		lkc_write_audit_log(
+			'ad_code_saved',
+			array(
+				'object_type' => 'ad_settings',
+				'detail'      => 'slot diubah: ' . implode( ', ', $changed ),
+			)
+		);
+	}
+}
+add_action( 'update_option_layarkatalog_ads', 'layarkatalog_audit_ad_code_change', 10, 2 );
+add_action( 'add_option_layarkatalog_ads', 'layarkatalog_audit_ad_code_change', 10, 2 );

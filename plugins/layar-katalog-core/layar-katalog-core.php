@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Layar Katalog Core
  * Description: Katalog/Episode, pencarian/filter, SEO, watchlist/riwayat lokal, rating akun, dan notifikasi episode Web Push VAPID.
- * Version: 1.4.0
+ * Version: 1.7.0
  * Requires at least: 6.3
  * Requires PHP: 8.2
  * License: GPL-2.0-or-later
@@ -19,13 +19,15 @@ if ( ! defined( 'LKC_PLUGIN_FILE' ) ) {
 	define( 'LKC_PLUGIN_FILE', __FILE__ );
 	define( 'LKC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 	define( 'LKC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-	define( 'LKC_PLUGIN_VERSION', '1.4.0' );
+	define( 'LKC_PLUGIN_VERSION', '1.7.0' );
 }
 
 $lkc_autoload = LKC_PLUGIN_DIR . 'vendor/autoload.php';
 if ( file_exists( $lkc_autoload ) ) {
 	require_once $lkc_autoload;
 }
+require_once LKC_PLUGIN_DIR . 'includes/security.php';
+require_once LKC_PLUGIN_DIR . 'includes/audit.php';
 require_once LKC_PLUGIN_DIR . 'includes/engagement.php';
 require_once LKC_PLUGIN_DIR . 'includes/web-push.php';
 
@@ -267,7 +269,7 @@ function lkc_register_meta() {
 		),
 	);
 
-	$episode_meta = array(
+	foreach ( $title_meta as $meta_key => $args ) {
 		$args['single']        = true;
 		$args['show_in_rest']  = true;
 		$args['auth_callback'] = $can_edit_meta;
@@ -405,20 +407,83 @@ function lkc_sanitize_video_url( $value ) {
 	return $url;
 }
 
-function lkc_is_allowed_video_url( $url ) {
+/**
+ * Whether a media URL satisfies the site's transport and host policy.
+ *
+ * Shared by the video and subtitle sanitizers. Both run only on save, so URLs
+ * stored before this policy existed keep working until an editor touches them.
+ *
+ * @param string $url Already escaped with `esc_url_raw()`.
+ * @return bool
+ */
+function lkc_is_allowed_media_url( $url ) {
 	$scheme = strtolower( (string) wp_parse_url( $url, PHP_URL_SCHEME ) );
-	$path   = (string) wp_parse_url( $url, PHP_URL_PATH );
-	$ext    = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
-	return in_array( $scheme, array( 'http', 'https' ), true ) && in_array( $ext, array( 'mp4', 'webm' ), true );
+	$host   = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+
+	if ( ! in_array( $scheme, array( 'http', 'https' ), true ) || '' === $host ) {
+		return false;
+	}
+
+	/**
+	 * Filter whether plain HTTP video and subtitle URLs are accepted.
+	 *
+	 * Defaults to false. On an HTTPS site the browser blocks HTTP media as mixed
+	 * content anyway, so accepting it only produces a player that silently fails.
+	 * Return true for a local or intranet source that genuinely has no TLS.
+	 *
+	 * @param bool $allow_insecure Whether to accept http:// media URLs.
+	 */
+	if ( 'https' !== $scheme && ! apply_filters( 'lkc_allow_insecure_media_urls', false ) ) {
+		return false;
+	}
+
+	/**
+	 * Filter the hosts video and subtitle files may be loaded from.
+	 *
+	 * An empty array (the default) accepts any host, which matches the previous
+	 * behaviour. List bare hostnames to pin media to your own storage or CDN;
+	 * subdomains of a listed host are accepted, look-alike prefixes are not.
+	 *
+	 *     add_filter( 'lkc_allowed_media_hosts', function () {
+	 *         return array( 'cdn.example.com', 'storage.googleapis.com' );
+	 *     } );
+	 *
+	 * @param string[] $hosts Allowed hostnames.
+	 */
+	$allowed_hosts = (array) apply_filters( 'lkc_allowed_media_hosts', array() );
+	if ( ! $allowed_hosts ) {
+		return true;
+	}
+
+	foreach ( $allowed_hosts as $candidate ) {
+		$candidate = trim( (string) $candidate );
+		/* Accept either a bare hostname or a full URL, and ignore a leading dot. */
+		$candidate_host = (string) wp_parse_url( $candidate, PHP_URL_HOST );
+		$candidate      = strtolower( ltrim( '' !== $candidate_host ? $candidate_host : $candidate, '.' ) );
+		if ( '' === $candidate ) {
+			continue;
+		}
+		if ( $host === $candidate || str_ends_with( $host, '.' . $candidate ) ) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
-/** Only accept direct VTT/SRT subtitle files over HTTP(S). */
+function lkc_is_allowed_video_url( $url ) {
+	$path = (string) wp_parse_url( $url, PHP_URL_PATH );
+	$ext  = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) );
+	return in_array( $ext, array( 'mp4', 'webm' ), true ) && lkc_is_allowed_media_url( $url );
+}
+
+/** Only accept direct VTT/SRT subtitle files that satisfy the media transport and host policy. */
 function lkc_sanitize_subtitle_url( $value ) {
 	if ( ! is_string( $value ) && ! is_numeric( $value ) ) {
 		return '';
 	}
 	$url = esc_url_raw( trim( (string) $value ), array( 'http', 'https' ) );
-	if ( ! $url ) {
+	if ( ! $url || ! lkc_is_allowed_media_url( $url ) ) {
 		return '';
 	}
 	$path = (string) wp_parse_url( $url, PHP_URL_PATH );
@@ -970,11 +1035,14 @@ add_shortcode( 'lk_episode_list', 'lkc_episode_list_shortcode' );
 
 /** Register the small, accessible source switcher only when an episode has mirrors. */
 function lkc_register_frontend_assets() {
+	/* Bust the cache by file time so player fixes reach browsers on upgrade. */
+	$script_path = LKC_PLUGIN_DIR . 'player.js';
+	$version     = file_exists( $script_path ) ? (string) filemtime( $script_path ) : LKC_PLUGIN_VERSION;
 	wp_register_script(
 		'lkc-player',
-		plugin_dir_url( __FILE__ ) . 'player.js',
+		LKC_PLUGIN_URL . 'player.js',
 		array(),
-		'1.4.0',
+		$version,
 		true
 	);
 }
@@ -1551,7 +1619,7 @@ add_action( 'pre_get_posts', 'lkc_filter_catalog_queries', 20 );
 /** Register contextual dynamic blocks so metadata works inside Query Loops. */
 function lkc_register_context_blocks() {
 	$script_path = plugin_dir_path( __FILE__ ) . 'blocks.js';
-	$version     = file_exists( $script_path ) ? (string) filemtime( $script_path ) : '1.4.0';
+	$version     = file_exists( $script_path ) ? (string) filemtime( $script_path ) : LKC_PLUGIN_VERSION;
 	wp_register_script(
 		'lkc-block-editor',
 		plugin_dir_url( __FILE__ ) . 'blocks.js',
@@ -1731,7 +1799,7 @@ function lkc_admin_styles( $hook ) {
 		return;
 	}
 	$css = '.lkc-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}.lkc-admin-wide{grid-column:1/-1}@media(max-width:700px){.lkc-admin-grid{grid-template-columns:1fr}.lkc-admin-wide{grid-column:auto}}';
-	wp_register_style( 'lkc-admin-inline', false, array(), '1.4.0' );
+	wp_register_style( 'lkc-admin-inline', false, array(), LKC_PLUGIN_VERSION );
 	wp_enqueue_style( 'lkc-admin-inline' );
 	wp_add_inline_style( 'lkc-admin-inline', $css );
 }
@@ -2160,11 +2228,12 @@ function lkc_register_catalog_search_route() {
 add_action( 'rest_api_init', 'lkc_register_catalog_search_route' );
 
 function lkc_rest_catalog_search( $request ) {
-	$args = array(
+	$paged = min( 500, max( 1, absint( $request->get_param( 'page' ) ) ) );
+	$args  = array(
 		'post_type'              => 'lk_title',
 		'post_status'            => 'publish',
 		'posts_per_page'         => min( 24, absint( $request->get_param( 'per_page' ) ) ),
-		'paged'                  => max( 1, absint( $request->get_param( 'page' ) ) ),
+		'paged'                  => $paged,
 		'no_found_rows'          => false,
 		'update_post_meta_cache' => true,
 		'update_post_term_cache' => true,
@@ -2259,7 +2328,7 @@ function lkc_rest_catalog_search( $request ) {
 			'items'      => $items,
 			'total'      => (int) $query->found_posts,
 			'totalPages' => (int) $query->max_num_pages,
-			'page'       => max( 1, absint( $request->get_param( 'page' ) ) ),
+			'page'       => $paged,
 		)
 	);
 	$response->header( 'Cache-Control', 'public, max-age=60' );
@@ -2301,6 +2370,12 @@ function lkc_activate() {
 	lkc_register_taxonomies();
 	if ( function_exists( 'lkc_engagement_install_tables' ) ) {
 		lkc_engagement_install_tables();
+	}
+	if ( function_exists( 'lkc_install_security_tables' ) ) {
+		lkc_install_security_tables();
+	}
+	if ( function_exists( 'lkc_maybe_schedule_security_pruning' ) ) {
+		lkc_maybe_schedule_security_pruning();
 	}
 	flush_rewrite_rules();
 	update_option( 'lkc_rewrite_version', '1.3.0', false );

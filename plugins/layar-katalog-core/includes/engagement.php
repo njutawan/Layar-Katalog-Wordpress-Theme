@@ -41,8 +41,11 @@ function lkc_engagement_install_tables() {
 			auth_token varchar(128) NOT NULL,
 			content_encoding varchar(20) NOT NULL DEFAULT 'aes128gcm',
 			created_at datetime NOT NULL,
+			failure_count smallint(5) unsigned NOT NULL DEFAULT 0,
+			last_failure_at datetime DEFAULT NULL,
 			PRIMARY KEY  (subscription_hash),
-			KEY created_at (created_at)
+			KEY created_at (created_at),
+			KEY failure_count (failure_count)
 		) {$charset_collate};";
 		dbDelta( $subscriptions_sql );
 	}
@@ -52,12 +55,12 @@ function lkc_engagement_install_tables() {
 		? $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( lkc_push_subscriptions_table_name() ) ) )
 		: false;
 	if ( $ratings_table === $ratings_exists && function_exists( 'lkc_push_subscriptions_table_name' ) && lkc_push_subscriptions_table_name() === $push_exists ) {
-		update_option( 'lkc_engagement_db_version', '1.0', false );
+		update_option( 'lkc_engagement_db_version', '1.1', false );
 	}
 }
 
 function lkc_engagement_maybe_install_tables() {
-	if ( '1.0' !== (string) get_option( 'lkc_engagement_db_version', '' ) ) {
+	if ( '1.1' !== (string) get_option( 'lkc_engagement_db_version', '' ) ) {
 		lkc_engagement_install_tables();
 	}
 }

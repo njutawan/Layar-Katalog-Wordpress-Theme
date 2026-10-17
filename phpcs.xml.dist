@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<!--
+	PHP_CodeSniffer ruleset for the Layar Katalog theme and core plugin.
+
+	Run it with:  phpcs -&#45;standard=phpcs.xml.dist .
+
+	The CI job that uses this ruleset is advisory (continue-on-error) because the
+	codebase predates it. Keep new code conforming so the report shrinks; once it
+	is clean, make the CI job blocking.
+-->
+<ruleset name="Layar Katalog">
+	<description>WordPress coding standards for the Layar Katalog block theme and its companion plugin.</description>
+
+	<file>plugins/layar-katalog-core</file>
+	<file>themes/layar-katalog</file>
+	<file>child-theme</file>
+	<file>tests/php</file>
+
+	<!-- Bundled Composer dependencies follow their own upstream standards. -->
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+	<arg name="parallel" value="8"/>
+
+	<config name="minimum_supported_wp_version" value="6.3"/>
+	<config name="testVersion" value="8.2-"/>
+
+	<rule ref="WordPress">
+		<!--
+			The plugin's main file is named after the plugin slug and the theme
+			files follow the block-theme layout, neither of which matches the
+			class-file naming convention this sniff expects.
+		-->
+		<exclude name="WordPress.Files.FileName"/>
+
+		<!--
+			Nonce and capability checks in this project are handled by explicit
+			check_admin_referer()/current_user_can() calls at the top of each
+			handler, which the sniff does not always recognise through helpers.
+		-->
+		<exclude name="WordPress.Security.NonceVerification.Missing"/>
+	</rule>
+
+	<!-- The test harness deliberately stubs WordPress and evaluates extracted source. -->
+	<rule ref="Squiz.PHP.Eval">
+		<exclude-pattern>tests/php/*</exclude-pattern>
+	</rule>
+</ruleset>

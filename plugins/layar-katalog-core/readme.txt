@@ -1,5 +1,5 @@
 LAYAR KATALOG CORE
-Versi 1.4.0
+Versi 1.7.0
 Lisensi: GPL-2.0-or-later
 
 Plugin pendamping tema Layar Katalog. Menyediakan tipe konten Katalog dan Episode, taksonomi Genre, filter/pencarian, metadata editorial/SEO, watchlist/riwayat lokal, rating pengguna, notifikasi Web Push VAPID, serta player HTML5 multi-sumber.
@@ -81,6 +81,33 @@ SHORTCODE (opsional)
 [lk_viewing_history] — riwayat episode lokal; tempatkan pada halaman WordPress.
 [lk_episode_history_marker] — marker untuk merekam episode yang sedang dibuka.
 [lkc_push_toggle] — tombol opt-in/opt-out Web Push.
+
+KEAMANAN & AUDIT
+- Semua route REST `lkc/v1` dibatasi per pengunjung: 60 permintaan baca dan 10 permintaan tulis per menit (429 + Retry-After). Ubah dengan filter `lkc_rest_rate_limits`. Di belakang Cloudflare/proxy, WAJIB petakan IP asli lewat filter `lkc_rate_limit_ip`; jika tidak, seluruh pengunjung akan masuk ke satu bucket.
+- CORS hanya mengizinkan origin situs sendiri. Origin lain tidak menerima `Access-Control-Allow-*` sama sekali, sehingga JavaScript lintas situs tidak dapat membaca respons yang membawa cookie. Tambahkan origin staging/aplikasi lewat filter `lkc_allowed_cors_origins`; jangan pernah memakai `*`.
+- Body permintaan tulis dibatasi 8 KB (filter `lkc_rest_max_body_bytes`) dan dijawab 413 bila melebihi. Batas otoritatif tetap di web server (`client_max_body_size`/`LimitRequestBody`).
+- Content-Security-Policy dikirim dalam mode report-only: tidak memblokir apa pun, hanya mengumpulkan pelanggaran ke route anonim `POST lkc/v1/csp-report`. Laporan diagregasi per (direktif, sumber terblokir, path dokumen) dan berhenti menambah baris pada 500 sidik jari (filter `lkc_csp_report_max_rows`).
+- Untuk membaca pelanggaran: buka Alat > Log Keamanan, tab CSP. Setelah domain iklan/analytics/font didaftarkan lewat filter `lkc_content_security_policy`, aktifkan pemblokiran dengan filter `lkc_csp_mode` (`'enforce'`), atau matikan dengan `'off'`.
+- Tab CSP juga menyusun snippet filter itu untuk Anda dari laporan yang tersimpan: host yang benar-benar terblokir beserta jumlahnya, host yang sudah diizinkan kebijakan dilewati, dan kata kunci `inline`/`eval`/`data` dijelaskan sebagai tindakan (bukan ditawarkan sebagai domain, karena ketiganya memang bukan domain).
+- `'unsafe-inline'` masih dipakai secara default karena kode iklan administrator dicetak ke `wp_head` dan WordPress core mencetak gaya/skrip inline sendiri. Untuk melepasnya, kembalikan true pada filter `lkc_csp_strict`: `'unsafe-inline'` dan `'unsafe-eval'` dibuang dan diganti nonce per-request yang distempel ke semua elemen inline, termasuk milik core (lewat `wp_script_attributes`/`wp_style_attributes`) dan kode iklan. Nyalakan dulu sambil tetap `report-only`, jelajahi situs, baca tab CSP, baru pindah ke `'enforce'`.
+- Mode ketat TIDAK kompatibel dengan cache halaman penuh: nonce berbeda tiap permintaan, jadi HTML yang disimpan cache akan merusak skrip pengunjung berikutnya. Karena itu setiap respons front-end ditandai `X-LK-Personalized: 1` saat mode ketat aktif (service worker bawaan sudah menolak menyimpannya). Bila Anda butuh cache HTML, sediakan nonce stabil lewat filter `lkc_csp_nonce`.
+- Plugin pihak ketiga yang mencetak `<script>` mentah tanpa melewati API skrip WordPress tidak akan mendapat nonce dan akan diblokir pada mode ketat. Itulah gunanya fase `report-only`.
+- Header keamanan lain: `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN`, `Permissions-Policy`, dan HSTS saat HTTPS. Semua dapat diubah/dinonaktifkan lewat filter `lkc_security_headers`.
+- Tab Audit pada Alat > Log Keamanan mencatat perubahan pengaturan push, rotasi kunci VAPID, penghapusan langganan, langganan anonim yang ditolak, dan perubahan kode iklan (nama slot saja, bukan isi kodenya). Aksi yang dicatat dikontrol filter `lkc_audit_log_actions`.
+- IP dan User-Agent disimpan sebagai HMAC-SHA256 dengan salt auth WordPress, bukan nilai mentah. Cron harian menghapus entri audit setelah 90 hari dan laporan pelanggaran yang tidak terlihat lagi setelah 30 hari (filter `lkc_audit_log_retention_days`, `lkc_csp_report_retention_days`).
+- Service worker hanya menyimpan respons same-origin yang berhasil, bukan `no-store`/`private`, dan tidak pernah menyimpan HTML yang ditandai header `X-LK-Personalized` (pengunjung login/pratinjau). Cache lama dibersihkan otomatis saat pembaruan.
+- Kunci privat VAPID disimpan terenkripsi (AES-256-GCM) dengan kunci turunan salt `auth`/`secure_auth` di `wp-config.php`, bukan teks mentah. Konsekuensinya: cadangan database WAJIB disertai `wp-config.php`. Bila salt berubah, muncul notifikasi di wp-admin dan kunci harus dibuat ulang di Pengaturan > Notifikasi Episode (langganan perlu opt-in ulang). Kunci lama dimigrasikan otomatis.
+- URL video dan subtitle hanya menerima HTTPS. Sumber internal tanpa TLS dapat diizinkan kembali lewat filter `lkc_allow_insecure_media_urls`, dan media dapat dikunci ke host tertentu lewat `lkc_allowed_media_hosts` (subdomain ikut diizinkan, prefiks mirip seperti `notcdn.example.com` tidak).
+- Langganan push yang terus gagal dikirim dihitung (`failure_count`, `last_failure_at`) dan dihapus cron harian setelah 5 kali gagal atau 30 hari gagal terus-menerus (filter `lkc_push_max_failures`, `lkc_push_stale_days`). Langganan yang belum pernah gagal tidak pernah dihapus.
+- Direktori `vendor/` ditolak untuk akses web lewat `.htaccess`. Pengguna nginx WAJIB menambahkan blok `location` yang tercantum di dalam berkas itu, karena nginx mengabaikan `.htaccess`. Setiap subdirektori plugin/tema diberi `index.php` agar isi direktori tidak dapat dilist.
+- Tabel plugin: `wp_lkc_push_subscriptions`, `wp_lkc_user_ratings`, `wp_lkc_audit_log`, `wp_lkc_csp_reports`. Keempatnya harus ikut dalam cadangan database. Lihat `docs/BACKUP-RESTORE.md` untuk runbook lengkap.
+
+PENGUJIAN
+- Suite uji tersedia di `tests/` dan dijalankan GitHub Actions pada setiap push/PR: `php -l` untuk semua berkas PHP, `node --check` untuk semua berkas JavaScript, 254 assertion PHP atas logika keamanan, 18 assertion aturan cache service worker, 22 assertion DOM player, 22 assertion komparator standar kode, 24 assertion pengaman skrip staging, dan `composer audit`.
+- Job PHPCS/WPCS bersifat BLOCKING atas pelanggaran baru: laporan revisi ini dibandingkan dengan laporan revisi basisnya, dan hanya pelanggaran yang ditambahkan perubahan itu yang menggagalkan build. Utang gaya kode lama tidak diwariskan ke perubahan baru, dan pelanggaran yang diperbaiki ikut dilaporkan.
+- Suite PHP dapat dijalankan tanpa PHP terpasang lewat `node tests/php/run-phpwasm.mjs 8.2` (PHP 8.2 asli dalam WebAssembly).
+- Suite JavaScript menerima `--previous` untuk membandingkan dengan versi di `git HEAD`, sehingga perbaikan tetap dapat dibuktikan, bukan hanya diklaim.
+- Dua hal yang tidak bisa diuji unit karena butuh WordPress sungguhan punya skripnya: `bash tests/wp/smoke-activate.sh` (uji aktivasi di staging — tabel, route, cron, header, kunci VAPID terenkripsi yang masih terbaca, `vendor/` tidak terjangkau web, rate limiter 429) dan `bash tests/wp/rehearse-restore.sh --target-db=NAMA --yes-drop=NAMA` (latihan restore kuartalan ke database sementara; tidak pernah menulis ke database produksi). Lihat `tests/README.md`.
 
 VALIDASI & KOMPATIBILITAS
 - Format/status dibatasi ke pilihan tersedia; tahun 1888–2100; rating 0–10; musim 1–999; nomor episode 0–9999 (presisi 0,1); durasi 0–999 menit.

@@ -7,6 +7,7 @@ Thumbs.db
 *.swo
 
 # Local packages/build artifacts; source and bundled vendor dependencies stay tracked
+node_modules/
 *.zip
 *.tar.gz
 coverage/

@@ -1,0 +1,9 @@
+<?php
+add_filter( 'lkc_content_security_policy', function ( $policy ) {
+	$policy['script-src'][] = 'https://*.cdn-partner.com';
+	$policy['media-src'][]  = 'http://legacy-streams.example.com';
+	return $policy;
+} );
+add_action( 'init', 'my_late_policy_tweak' );
+function my_late_policy_tweak() {}
+?>

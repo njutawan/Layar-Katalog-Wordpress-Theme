@@ -1,0 +1,5 @@
+<?php
+add_filter( 'lkc_content_security_policies', function ( $policy ) {
+	$policy['script-src'][] = 'https://pagead2.googlesyndication.com';
+	return $policy;
+} );

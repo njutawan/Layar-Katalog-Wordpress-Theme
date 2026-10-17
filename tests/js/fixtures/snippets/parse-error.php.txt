@@ -1,0 +1,4 @@
+<?php
+add_filter( "lkc_content_security_policy", function ( $policy ) {
+	$policy["script-src"][] = "https://a.test";
+	return $policy;

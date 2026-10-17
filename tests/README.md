@@ -16,9 +16,10 @@ node js/phpcs-regression.test.js       # the comparator that makes the standards
 # Bash (no dependencies)
 bash wp/guards.test.sh                 # the staging scripts refuse dangerous invocations
 
-# JavaScript DOM tests (needs jsdom)
+# JavaScript DOM tests and the WebAssembly PHP tools (needs jsdom and @php-wasm/node)
 npm ci                                 # inside tests/; a lock file is committed
 node js/player-dom-xss.test.js
+node js/csp-snippet-review.test.js     # the mu-plugin snippet reviewer
 
 # PHP — either of these
 php php/security.test.php              # if you have PHP 8.2+
@@ -39,6 +40,7 @@ node php/lint-phpwasm.mjs 8.2          # parse-check every project PHP file with
 | `js/service-worker.test.js` | 18 | What the service worker is allowed to put in Cache Storage, which requests it ignores, `notificationclick` navigation, and cache eviction on `activate`. |
 | `js/csp-audit.test.js` | 59 | The auditor that answers "would enforce mode break this page?": policy parsing, the `-elem`/`-attr` → parent → `default-src` fallback chain, host wildcards and ports, `'self'`, scheme sources, the CSP2 trap where a nonce makes the browser ignore `'unsafe-inline'`, the fact that no nonce can cover a `style=` attribute or an `onclick=` handler, the HTML scanner over a realistic page fixture, the generated allowlist snippet, and the CLI's exit codes. |
 | `js/player-dom-xss.test.js` | 22 | That a hostile episode title stays text, that `javascript:` and `data:` navigation targets are refused, and that switching video source keeps exactly one copy of each subtitle track. |
+| `js/csp-snippet-review.test.js` | 105 | The reviewer that judges a CSP snippet before it is pasted into `mu-plugins`: the static refusals (filesystem, network, shell, `eval`, superglobals, `$wpdb`, a closing tag, a wholesale `$policy =`), the structural ones (no `<?php`, no `add_filter`, a tag the plugin never applies, a missing `return $policy`), the diff of the header the plugin would really send, and one end-to-end run of all eight fixtures through a real PHP 8.2 — including a snippet that survives report-only mode and only shows its hand under `lkc_csp_strict`. |
 | `js/phpcs-regression.test.js` | 22 | The comparator behind the blocking coding-standards job: line-number drift is not a new violation, a repeated violation is counted per occurrence, warnings are not errors, a deleted file counts as debt removed, and bad input exits 2 instead of passing silently. |
 | `wp/guards.test.sh` | 24 | The two staging scripts abort before touching anything when the target database is the live one, when the name contains shell metacharacters, when the drop was not confirmed by name, or when the plugin would be deactivated without `--activate`. Every case asserts no `mysql` command was issued. |
 | `php/lint-phpwasm.mjs` | per file | Every `.php` under the project (excluding `vendor/`) parses. This is the check that found a fatal parse error in the plugin's main file — see finding F-15 in [`../docs/SECURITY-AUDIT.md`](../docs/SECURITY-AUDIT.md). |
@@ -73,6 +75,37 @@ What it reports, and what each line means:
 - **`javascript:` and `data:` URLs in markup**, flagged whatever the policy says.
 
 It is a scanner, not a browser: it cannot see what a third-party script injects at runtime, and a page it clears can still produce violations. Use it to shorten the report-only phase and to check a policy change in advance, and treat the CSP tab as the authority.
+
+## Reviewing a snippet before it goes into mu-plugins
+
+Step 3 of switching the CSP to enforce mode is "paste the generated filter into `wp-content/mu-plugins/` and check every line". `csp-snippet-review.mjs` does that check, and it does it by running the snippet:
+
+```bash
+node csp-snippet-review.mjs wp-content/mu-plugins/csp-allowlist.php
+node csp-snippet-review.mjs snippet-a.php snippet-b.php     # one PHP boot for all of them
+node csp-snippet-review.mjs snippet.php --json              # the diff as data
+```
+
+It boots a real PHP 8.2 in WebAssembly, loads the plugin's own `security.php`, applies the snippet through the filter the plugin actually applies, and prints the header the site would then send — with the added and removed sources listed per directive. On top of that diff it reports:
+
+| Verdict | Exit | Meaning |
+|---|---|---|
+| `SAFE TO PASTE` | 0 | It only adds sources, nothing was removed, and the header still builds. |
+| `NEEDS A HUMAN DECISION` | 1 | Nothing is broken, but something is not a plain allowlist entry: a wildcard host, a plain-`http` source, a removed source, a closing `?>`, an `add_action`. |
+| `DO NOT PASTE` | 2 | Broken or weakening. |
+
+What it refuses outright, all of which have been seen in real snippets:
+
+- **A filter registered on the wrong tag.** The admin screen generates `lkc_content_security_policy`; a typo produces a file that loads cleanly and does nothing at all, and the operator believes the allowlist is in place.
+- **A missing `return $policy;`.** The filter returns `null`, the policy collapses from thirteen directives to zero, and the site sends **no CSP header at all** — a strictly worse state than before the snippet was added.
+- **An unquoted keyword.** `$policy['style-src'] = array( 'self', '*' );` sends `style-src self *`, because in PHP the quotes belong inside the string. A browser then reads a host named `self` plus every host on earth.
+- **A wildcard source** (`*`, `*://cdn.test`), which allows every host.
+- **Anything that defeats strict mode.** A filter on `lkc_csp_directives` runs *after* `lkc_apply_csp_strict_mode()`, so it can put `'unsafe-inline'` back behind the nonce. The reviewer re-evaluates every snippet with `lkc_csp_strict` on and refuses one that survives that.
+- **Constructs that have no business in a policy snippet**: filesystem, network, shell, `eval`, `include`, `base64_decode`, superglobals, `$wpdb`, `ini_set`, `extract()`, reflection.
+
+The fixtures in `js/fixtures/snippets/` are one file per case and are stored with a `.php.txt` extension on purpose: CI runs `php -l` over every `*.php` in the repository, and one fixture is deliberately unparsable. Comments are blanked before scanning, so a docblock that says "never call `eval()` here" is not reported as a call to `eval()`.
+
+The snippet is executed, so only run this on a file you would run. It executes inside the WebAssembly sandbox: no host filesystem beyond the mirrored repository, no database, no network.
 
 ## Staging scripts
 

@@ -1,0 +1,5 @@
+<?php
+add_filter( 'lkc_csp_directives', function ( $policy ) {
+	$policy['script-src'][] = "'unsafe-inline'";
+	return $policy;
+} );

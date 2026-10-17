@@ -94,6 +94,12 @@ jobs:
       - name: Player DOM XSS regression
         run: node tests/js/player-dom-xss.test.js
 
+      # Reviews a CSP mu-plugin snippet by loading it into a real PHP 8.2 with
+      # the plugin's own policy builder, then diffing the header it produces.
+      # Needs the WebAssembly runtime, so it runs after the install.
+      - name: CSP snippet reviewer
+        run: node tests/js/csp-snippet-review.test.js
+
   dependencies:
     name: Composer advisory audit
     runs-on: ubuntu-latest

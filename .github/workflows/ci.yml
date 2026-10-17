@@ -115,6 +115,16 @@ jobs:
       - name: CSP strict-mode round trip
         run: node tests/js/csp-strict-roundtrip.test.js
 
+      # The php job runs these two suites natively. Running them again here means
+      # both PHP paths execute on every push, so a suite that only passes under one
+      # build cannot slip through - and this is the path a contributor without PHP
+      # installed uses locally.
+      - name: Security suite in WebAssembly PHP 8.2
+        run: node tests/php/run-phpwasm.mjs 8.2 tests/php/security.test.php
+
+      - name: Activation suite in WebAssembly PHP 8.2
+        run: node tests/php/run-phpwasm.mjs 8.2 tests/php/activation.test.php
+
   dependencies:
     name: Composer advisory audit
     runs-on: ubuntu-latest

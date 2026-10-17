@@ -335,7 +335,7 @@ Ronde ini tidak mengubah satu baris pun kode yang di-*ship*, jadi **tidak ada bu
 | `tests/lint-js.mjs` | per berkas | 21/21 |
 | `tests/php/lint-phpwasm.mjs` | per berkas | 18/18 |
 
-Keenam suite baru masuk CI (dijalankan dari dalam `tests/`) dan `.github/workflows/ci.yml`: suite aktivasi dijalankan job `php` dengan PHP 8.2 asli, auditor CSP dijalankan job `javascript` sebelum instalasi dependensi karena ia hanya memakai bawaan Node, pemeriksa snippet dijalankan sesudah instalasi karena ia membutuhkan runtime WebAssembly, simulasi instalasi dijalankan job `php` tepat setelah guard skrip staging, dan round trip mode ketat dijalankan job `javascript` sesudah pemeriksa snippet karena ia membutuhkan runtime WebAssembly dan jsdom sekaligus.
+Keenam suite baru masuk CI (dijalankan dari dalam `tests/`) dan `.github/workflows/ci.yml`: suite aktivasi dijalankan job `php` dengan PHP 8.2 asli, auditor CSP dijalankan job `javascript` sebelum instalasi dependensi karena ia hanya memakai bawaan Node, pemeriksa snippet dijalankan sesudah instalasi karena ia membutuhkan runtime WebAssembly, simulasi instalasi dijalankan job `php` tepat setelah guard skrip staging, dan round trip mode ketat dijalankan job `javascript` sesudah pemeriksa snippet karena ia membutuhkan runtime WebAssembly dan jsdom sekaligus. Suite keamanan dan suite aktivasi kini dijalankan di **kedua** jalur PHP: native di job `php`, dan lewat runtime WebAssembly di job `javascript`. Sebelumnya keduanya hanya diverifikasi lewat wasm di mesin pengembangan sementara CI menjalankan native, sehingga suite yang hanya lulus di satu build PHP bisa lolos tanpa terlihat; sekarang tidak.
 
 ### Cara auditor ini mengubah langkah 2 dan 3
 

@@ -48,6 +48,16 @@ function t_section( $label ) {
  * Constants
  * ---------------------------------------------------------------- */
 define( 'ABSPATH', '/tmp/wp/' );
+
+/*
+ * The table installers require_once ABSPATH . 'wp-admin/includes/upgrade.php'
+ * for dbDelta(). dbDelta itself is stubbed below, so the file only has to exist
+ * for the require to resolve - create it if this machine does not have one.
+ */
+if ( ! file_exists( ABSPATH . 'wp-admin/includes/upgrade.php' ) ) {
+	@mkdir( ABSPATH . 'wp-admin/includes', 0777, true );
+	@file_put_contents( ABSPATH . 'wp-admin/includes/upgrade.php', "<?php\n/* Test harness stand-in: dbDelta() is stubbed in tests/php/bootstrap.php. */\n" );
+}
 define( 'KB_IN_BYTES', 1024 );
 define( 'MINUTE_IN_SECONDS', 60 );
 define( 'HOUR_IN_SECONDS', 3600 );
@@ -162,13 +172,13 @@ function add_settings_section( ...$a ) { return true; }
 function add_settings_field( ...$a ) { return true; }
 function register_setting( ...$a ) { return true; }
 function register_post_type( $t, $a = array() ) { $GLOBALS['__post_types'][ $t ] = $a; return true; }
-function register_taxonomy( $t, $o, $a = array() ) { return true; }
+function register_taxonomy( $t, $o, $a = array() ) { $GLOBALS['__taxonomies'][ $t ] = array( 'object_types' => $o, 'args' => $a ); return true; }
 function register_post_meta( $t, $k, $a = array() ) { $GLOBALS['__post_meta'][ $t ][ $k ] = $a; return true; }
 function add_meta_box( ...$a ) { return true; }
-function wp_register_script( ...$a ) { return true; }
-function wp_register_style( ...$a ) { return true; }
-function wp_enqueue_script( ...$a ) { return true; }
-function wp_enqueue_style( ...$a ) { return true; }
+function wp_register_script( ...$a ) { $GLOBALS['__assets'][ 'script:' . ( isset( $a[0] ) ? $a[0] : '' ) ] = $a; return true; }
+function wp_register_style( ...$a ) { $GLOBALS['__assets'][ 'style:' . ( isset( $a[0] ) ? $a[0] : '' ) ] = $a; return true; }
+function wp_enqueue_script( ...$a ) { $GLOBALS['__enqueued'][] = 'script:' . ( isset( $a[0] ) ? $a[0] : '' ); return true; }
+function wp_enqueue_style( ...$a ) { $GLOBALS['__enqueued'][] = 'style:' . ( isset( $a[0] ) ? $a[0] : '' ); return true; }
 function wp_add_inline_style( ...$a ) { return true; }
 function wp_add_inline_script( ...$a ) { return true; }
 function wp_localize_script( ...$a ) { return true; }
@@ -195,8 +205,34 @@ function get_permalink( $i = 0 ) { return 'https://example.test/episode/test/'; 
 function get_site_icon_url( $s = 512 ) { return ''; }
 function wp_get_current_user() { return (object) array( 'ID' => $GLOBALS['__user_id'], 'user_login' => 'editor' ); }
 function is_wp_error( $t ) { return $t instanceof WP_Error; }
-function dbDelta( $q ) { return array(); }
+function dbDelta( $q ) { $GLOBALS['__dbdelta'][] = (string) $q; return array(); }
 function wp_unslash_deep( $v ) { return $v; }
+
+/*
+ * WordPress pieces the activation harness needs that the security suite does
+ * not: the REST server constants used in route definitions, the meta
+ * registration recorder, and the rewrite flush.
+ */
+class WP_REST_Server {
+	const READABLE   = 'GET';
+	const CREATABLE  = 'POST';
+	const EDITABLE   = 'PUT, PATCH';
+	const DELETABLE  = 'DELETE';
+	const ALLMETHODS = 'GET, POST, PUT, PATCH, DELETE';
+}
+function __return_true() { return true; }
+function __return_false() { return false; }
+function _x( $text, $context, $domain = null ) { return (string) $text; }
+function sanitize_title( $t ) { return strtolower( str_replace( ' ', '-', (string) $t ) ); }
+function register_meta( $type, $key, $args = array() ) { $GLOBALS['__meta'][] = array( 'object_type' => $type, 'meta_key' => $key, 'args' => $args ); return true; }
+function flush_rewrite_rules( $hard = true ) { $GLOBALS['__flushed'][] = (bool) $hard; return true; }
+function plugins_url( $path = '', $plugin = '' ) { return LKC_PLUGIN_URL . ltrim( (string) $path, '/' ); }
+function get_post_types( $args = array(), $output = 'names' ) { return array( 'lk_title', 'lk_episode' ); }
+function shortcode_atts( $pairs, $atts, $shortcode = '' ) { $atts = (array) $atts; $out = array(); foreach ( (array) $pairs as $k => $v ) { $out[ $k ] = array_key_exists( $k, $atts ) ? $atts[ $k ] : $v; } return $out; }
+function wp_list_pluck( $list, $field ) { $out = array(); foreach ( (array) $list as $item ) { $item = (array) $item; if ( isset( $item[ $field ] ) ) { $out[] = $item[ $field ]; } } return $out; }
+function get_the_ID() { return 0; }
+function get_post_type( $id = 0 ) { return ''; }
+function wp_reset_postdata() { return true; }
 
 
 class WP_Error {

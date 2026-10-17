@@ -46,6 +46,15 @@ jobs:
       - name: Run the security test suite
         run: php tests/php/security.test.php
 
+      # What activation actually registers: post types, taxonomy, all 24 catalog
+      # meta keys, the lkc/v1 routes and their permission callbacks, the four
+      # custom tables, the cron jobs and the front-end assets. It also scans
+      # every add_action/add_filter/route registration in the shipped files and
+      # fails if the callback it names does not exist - the class of defect that
+      # F-15 belonged to and that `php -l` cannot see.
+      - name: Run the activation test suite
+        run: php tests/php/activation.test.php
+
       # Proves the staging scripts refuse to touch the live database: they are
       # run by hand against a real site, so their guards are the risky part.
       - name: Staging script guards
@@ -73,6 +82,11 @@ jobs:
 
       - name: Service worker cache rules
         run: node tests/js/service-worker.test.js
+
+      # Guards the tool that answers "would enforce mode break this page?"
+      # before anybody switches lkc_csp_mode on a live site.
+      - name: CSP auditor
+        run: node tests/js/csp-audit.test.js
 
       - name: Install test dependencies
         run: npm ci --prefix tests --no-audit --no-fund

@@ -294,10 +294,63 @@ Assertion baru yang paling penting: **snippet yang dihasilkan tab CSP benar-bena
 Tidak ada lagi yang bisa dikerjakan dari dalam repo. Yang tertinggal murni eksekusi di situs hidup:
 
 1. Jalankan `tests/wp/smoke-activate.sh` di staging (dengan `--activate` untuk menguji siklus aktivasi penuh), lalu `tests/wp/smoke-activate.sh` lagi setelah deploy produksi pertama.
-2. Nyalakan `lkc_csp_strict` sambil tetap `report-only` selama seminggu penjelajahan normal → buka **Alat → Log Keamanan → CSP** → tempel snippet yang dihasilkan ke `wp-content/mu-plugins/` → periksa tiap baris → set `lkc_csp_mode` ke `'enforce'` → matikan `lkc_csp_strict` bila ada plugin pihak ketiga yang ternyata mencetak skrip mentah.
+2. Pra-uji dulu dengan `node tests/js/csp-audit.mjs --url=https://staging.example/ --strict` (lihat bagian *Persiapan eksekusi situs-hidup*), lalu nyalakan `lkc_csp_strict` sambil tetap `report-only` selama seminggu penjelajahan normal → buka **Alat → Log Keamanan → CSP** → tempel snippet yang dihasilkan ke `wp-content/mu-plugins/` → periksa tiap baris → jalankan auditor sekali lagi untuk memastikan tidak ada yang tersisa → set `lkc_csp_mode` ke `'enforce'` → matikan `lkc_csp_strict` bila ada plugin pihak ketiga yang ternyata mencetak skrip mentah.
 3. Jalankan latihan restore pertama dengan `tests/wp/rehearse-restore.sh`, isi baris lognya di `docs/BACKUP-RESTORE.md` §6, dan tutup temuan apa pun sebelum latihan berikutnya.
 4. Uji lintas browser (Chrome, Firefox, Safari) dan pengiriman push nyata dari provider, karena keduanya tidak bisa disimulasikan harness.
 5. Checklist operasional pra-live: `WP_DEBUG_DISPLAY` mati, `DISALLOW_FILE_EDIT` aktif, 2FA semua admin, `debug.log` tidak terjangkau HTTP, `lkc_rate_limit_ip` dikonfigurasi di belakang CDN, dan `includeSubDomains` dilepas dari HSTS bila ada layanan non-HTTPS di subdomain.
+
+---
+## Persiapan eksekusi situs-hidup — sudah diterapkan (2026-10-17)
+
+Ronde ini tidak mengubah satu baris pun kode yang di-*ship*, jadi **tidak ada bump versi**: tetap Core Plugin 1.7.0 / Theme 1.7.0. Yang ditambah adalah dua alat supaya lima langkah di atas bisa dikerjakan dengan bukti, bukan perkiraan — keduanya diuji, keduanya masuk CI.
+
+| Item | Yang dikerjakan | Berkas |
+|---|---|---|
+| **Poin 20** — logika aktivasi | Suite baru `tests/php/activation.test.php` (81 assertion) menguji *apa yang didaftarkan* aktivasi, bukan hanya bahwa ia tidak fatal: argumen kedua post type dan taksonomi, 24 kunci meta katalog beserta `show_in_rest`/`sanitize_callback`/`auth_callback`/`single` (regresi F-15), keenam route `lkc/v1` dengan `permission_callback` dan `methods`-nya, pemisahan hak route rating (GET publik, POST lewat `lkc_rest_can_rate_title` — penjaga IDOR poin 14), `args` wajib `/push/subscribe`, tiga `sanitize_callback` route pencarian, keempat panggilan `dbDelta`, cron yang dijadwalkan, dan registrasi aset front-end (URL asal plugin, cache-buster `filemtime`, footer, tidak ada `http://`) | `tests/php/activation.test.php` |
+| Pemindai integritas callback | Bagian pertama suite itu memindai keenam berkas registrasi yang di-*ship* dan menuntut setiap `add_action`, `add_filter`, `add_shortcode`, `register_activation_hook`, serta setiap kunci `callback`/`permission_callback`/`sanitize_callback`/`validate_callback` menunjuk fungsi yang benar-benar ada. Ini kelas cacat yang tidak terlihat oleh `php -l` dan yang baru meledak pada request pertama yang memicu hook-nya — dan ia diuji dulu terhadap fixture sintetis, supaya pemindainya sendiri tidak bisa lulus diam-diam | `tests/php/activation.test.php` |
+| **F-03** — pra-uji sebelum `enforce` | `tests/js/csp-audit.mjs`: auditor CSP statis. Menerima `--url=` (membaca header CSP yang benar-benar dikirim situs), `--html=`, atau markup dari stdin, lalu melaporkan sumber daya mana yang akan diblokir kebijakan itu dengan semantik browser yang benar: rantai fallback `-elem`/`-attr` → induk → `default-src`, wildcard host, port default, `'self'`, sumber skema, dan jebakan CSP2 bahwa satu nonce membuat `'unsafe-inline'` diabaikan. `--strict` mengevaluasi seolah `lkc_csp_strict` sudah nyala. Keluarannya menyebut nomor baris, mengelompokkan host per direktif, mencetak hash untuk inline yang tidak bisa di-nonce, dan menyusun snippet `add_filter( 'lkc_content_security_policy', … )` yang bentuknya sama dengan hasil tab CSP. Exit 1 bila ada yang akan terblokir, jadi bisa menahan deploy | `tests/js/csp-audit.mjs`, `tests/js/csp-audit.test.js` (59 assertion), `tests/js/fixtures/csp-sample.html` |
+| Runner + bootstrap | `run-phpwasm.mjs` kini bisa menjalankan berkas uji apa pun di bawah `tests/` (path divalidasi, `..` ditolak), dan `bootstrap.php` diperluas: `WP_REST_Server` dengan konstanta method-nya, `register_meta`, `flush_rewrite_rules`, `plugins_url`, `_x`, `sanitize_title`, `__return_true`/`__return_false`. Stub yang tadinya diam kini merekam argumennya (`register_taxonomy`, `wp_register_script`/`wp_register_style`, `wp_enqueue_*`, `dbDelta`) supaya suite aktivasi bisa memeriksa *nilai* yang dikirim, bukan hanya bahwa fungsinya dipanggil. Stand-in `wp-admin/includes/upgrade.php` dibuat otomatis karena kedua installer `require_once` berkas itu. Suite keamanan lama tetap **254 lulus, 0 gagal** sesudah semua perubahan ini | `tests/php/run-phpwasm.mjs`, `tests/php/bootstrap.php` |
+
+### Bukti pengujian
+
+| Suite | Assertion | Hasil |
+|---|---|---|
+| `tests/php/activation.test.php` | 81 | **81 lulus, 0 gagal** *(baru)* |
+| `tests/js/csp-audit.test.js` | 59 | **59 lulus, 0 gagal** *(baru)* |
+| `tests/php/security.test.php` | 254 | 254 lulus, 0 gagal |
+| `tests/js/service-worker.test.js` | 18 | 18 lulus, 0 gagal |
+| `tests/js/player-dom-xss.test.js` | 22 | 22 lulus, 0 gagal |
+| `tests/js/phpcs-regression.test.js` | 22 | 22 lulus, 0 gagal |
+| `tests/wp/guards.test.sh` | 24 | 24 lulus, 0 gagal |
+| `tests/lint-js.mjs` | per berkas | 20/20 |
+| `tests/php/lint-phpwasm.mjs` | per berkas | 18/18 |
+
+Kedua suite baru masuk `npm test` (dijalankan dari dalam `tests/`) dan `.github/workflows/ci.yml`: suite aktivasi dijalankan job `php` dengan PHP 8.2 asli, auditor CSP dijalankan job `javascript` sebelum instalasi dependensi karena ia hanya memakai bawaan Node.
+
+### Cara auditor ini mengubah langkah 2 dan 3
+
+Sebelumnya satu-satunya cara mengetahui apa yang akan diblokir `enforce` adalah menyalakan mode ketat di situs hidup, menjelajah seminggu, lalu membaca tab CSP. Itu tetap jalur yang benar: laporan browser adalah otoritas, dan hanya browser yang melihat apa yang disuntikkan skrip pihak ketiga saat runtime. Auditor ini tidak menggantikannya — ia memangkas risiko di kedua ujungnya.
+
+```bash
+# sebelum menyalakan apa pun: apa yang akan hilang dari halaman ini?
+node tests/js/csp-audit.mjs --url=https://staging.example/ --strict
+
+# sesudah snippet dari tab CSP dipasang: masih ada yang terblokir?
+node tests/js/csp-audit.mjs --url=https://staging.example/ --strict --quiet
+
+# uji kebijakan yang sedang dipertimbangkan, tanpa menyentuh situs
+node tests/js/csp-audit.mjs --html=page.html --document-url=https://staging.example/ \
+    --policy="default-src 'self'; script-src 'self' https://pagead2.googlesyndication.com"
+```
+
+Dua hal yang ditegaskan auditor ini, yang sebelumnya hanya hidup sebagai catatan keputusan:
+
+- **Atribut tidak bisa di-nonce.** `style="…"` dan `onclick="…"` tetap diblokir kebijakan ketat walaupun nonce-nya cocok, karena browser mengabaikan nonce pada atribut. Itu alasan F-17 memindah gaya inline ke stylesheet, dan alasan laporan auditor menyebut `addEventListener` — bukan nonce — sebagai perbaikan untuk handler. Jalan keluarnya (`'unsafe-hashes'` + hash) ikut dicetak, bersama peringatan bahwa ia melemahkan kebijakan.
+- **Satu nonce mematikan `'unsafe-inline'` untuk seluruh direktif.** Auditor mereproduksi aturan CSP2 itu, sehingga halaman yang hari ini terasa aman justru karena `'unsafe-inline'` langsung terlihat rapuhnya begitu mode ketat dinyalakan — sebelum ada pengunjung yang melihat halaman rusak.
+
+### Yang tetap tidak bisa dikerjakan dari repo
+
+Batasnya perlu dikatakan terus terang: **mode ketat belum pernah diamati di browser sungguhan**, dan kedua skrip `tests/wp/` **belum pernah dijalankan terhadap instalasi WordPress nyata**. Suite aktivasi memeriksa argumen registrasi pada sumber yang di-*ship*, bukan hasilnya di database nyata — itu tugas `smoke-activate.sh` di staging. Kelima langkah di atas tetap milik operator.
 
 ---
 ## Detail per poin
@@ -676,7 +729,7 @@ Ini penting karena plugin menyimpan data di **tempat yang tidak otomatis tercaku
 
 Grep atas `X-Frame-Options|Content-Security-Policy|X-Content-Type-Options|Referrer-Policy|Strict-Transport-Security|Permissions-Policy|send_headers|header(` di seluruh kode orisinal hanya menemukan **2 hasil**, keduanya `Cache-Control` (`engagement.php:177`, `layar-katalog-core.php:2265`). Tidak ada header keamanan apa pun yang dikirim dari tema maupun plugin. (WordPress core hanya mengirim `X-Frame-Options: SAMEORIGIN` untuk halaman login/admin, **bukan** untuk frontend.)
 
-> **Status: 🟡 tahap 1 (1.4.1) + tahap 2 (1.5.0) + tahap 3 (1.7.0) diterapkan; pemblokiran nyata tinggal dinyalakan di situs hidup.** Tahap 1: `nosniff`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, dan HSTS, semuanya dapat diubah lewat filter `lkc_security_headers`. Tahap 2: **CSP kini dikirim** sebagai `Content-Security-Policy-Report-Only` dengan `report-uri` menuju kolektor `POST lkc/v1/csp-report`, plus halaman **Alat → Log Keamanan** tab CSP untuk membacanya (lihat *Remediasi P1*). Tahap 3 (1.7.0): `lkc_csp_strict` melepas `'unsafe-inline'` dan `'unsafe-eval'` dari `script-src`/`style-src`/`default-src` dan menggantinya dengan nonce per-request, distempel ke semua elemen inline lewat `wp_script_attributes`/`wp_style_attributes` (jadi keluaran inline milik core ikut tertutup) dan ke kode iklan administrator lewat `layarkatalog_stamp_csp_nonce()`. Atribut `style=` inline di `front-page.html` dipindah ke CSS karena atribut gaya tidak bisa membawa nonce (F-17). Tab CSP kini menyusun snippet allowlist siap tempel dari laporan pelanggaran. Yang belum: **menjalankan** siklus itu di situs hidup — strict + `report-only` seminggu, tempel snippet, baru `lkc_csp_mode` → `'enforce'`. Rencana bertahap di bawah tetap berlaku.
+> **Status: 🟡 tahap 1 (1.4.1) + tahap 2 (1.5.0) + tahap 3 (1.7.0) diterapkan; pemblokiran nyata tinggal dinyalakan di situs hidup.** Tahap 1: `nosniff`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, dan HSTS, semuanya dapat diubah lewat filter `lkc_security_headers`. Tahap 2: **CSP kini dikirim** sebagai `Content-Security-Policy-Report-Only` dengan `report-uri` menuju kolektor `POST lkc/v1/csp-report`, plus halaman **Alat → Log Keamanan** tab CSP untuk membacanya (lihat *Remediasi P1*). Tahap 3 (1.7.0): `lkc_csp_strict` melepas `'unsafe-inline'` dan `'unsafe-eval'` dari `script-src`/`style-src`/`default-src` dan menggantinya dengan nonce per-request, distempel ke semua elemen inline lewat `wp_script_attributes`/`wp_style_attributes` (jadi keluaran inline milik core ikut tertutup) dan ke kode iklan administrator lewat `layarkatalog_stamp_csp_nonce()`. Atribut `style=` inline di `front-page.html` dipindah ke CSS karena atribut gaya tidak bisa membawa nonce (F-17). Tab CSP kini menyusun snippet allowlist siap tempel dari laporan pelanggaran, dan `tests/js/csp-audit.mjs` bisa memprakirakan halaman mana yang akan rusak **sebelum** saklar itu disentuh (dijelaskan di bagian *Persiapan eksekusi situs-hidup*). Yang belum: **menjalankan** siklus itu di situs hidup — pra-uji dengan auditor, strict + `report-only` seminggu, tempel snippet, baru `lkc_csp_mode` → `'enforce'`. Rencana bertahap di bawah tetap berlaku.
 
 **Rekomendasi — pasang di plugin (hook `send_headers`) agar tidak bergantung tema:**
 
@@ -716,7 +769,7 @@ Tambahan yang terkait: **F-07** — `service-worker.js` menyimpan respons HTML s
 
 ### 20. Tes security sebelum live — ❌ GAGAL
 
-> **Status: ✅ CI + suite uji selesai di 1.6.0, diperluas dan dijadikan blocking di 1.7.0; uji di situs hidup punya skripnya tetapi belum dijalankan.** `.github/workflows/ci.yml` menjalankan empat job pada setiap push dan PR: `php -l` atas **semua** berkas PHP (vendor dikecualikan), `node --check` atas semua JS, suite PHP **254 assertion** atas logika keamanan dengan WordPress di-*stub*, suite service worker **18 assertion**, suite DOM player **22 assertion**, suite komparator PHPCS **22 assertion**, suite pengaman skrip staging **24 assertion**, `composer audit --locked`, dan PHPCS/WPCS yang kini **blocking atas pelanggaran baru**. Harness hidup di `tests/` beserta runner WebAssembly sehingga bisa dijalankan tanpa PHP terpasang. Kedua suite JS menerima `--previous` untuk menjalankan assertion yang sama terhadap `git HEAD`: HEAD gagal 9/18 (service worker) dan 8/22 (player). **Temuan F-15 — fatal parse error di berkas utama plugin — ditemukan persis oleh langkah `php -l` yang sekarang ada di CI**, dan **F-16 — duplikasi `<track>` subtitle — ditemukan oleh suite DOM itu**. Sejak 1.7.0 job PHPCS blocking atas pelanggaran yang dimasukkan sebuah perubahan (dibandingkan terhadap revisi basisnya, dicocokkan per sniff + pesan, bukan per nomor baris), dan uji aktivasi di staging punya skripnya: `tests/wp/smoke-activate.sh`. Yang tetap tertunda: **menjalankan** skrip itu di staging, uji lintas browser, dan pengiriman push nyata dari provider.
+> **Status: ✅ CI + suite uji selesai di 1.6.0, diperluas dan dijadikan blocking di 1.7.0; uji di situs hidup punya skripnya tetapi belum dijalankan.** `.github/workflows/ci.yml` menjalankan empat job pada setiap push dan PR: `php -l` atas **semua** berkas PHP (vendor dikecualikan), `node --check` atas semua JS, suite PHP **254 assertion** atas logika keamanan dengan WordPress di-*stub*, suite service worker **18 assertion**, suite DOM player **22 assertion**, suite komparator PHPCS **22 assertion**, suite pengaman skrip staging **24 assertion**, `composer audit --locked`, dan PHPCS/WPCS yang kini **blocking atas pelanggaran baru**. Harness hidup di `tests/` beserta runner WebAssembly sehingga bisa dijalankan tanpa PHP terpasang. Kedua suite JS menerima `--previous` untuk menjalankan assertion yang sama terhadap `git HEAD`: HEAD gagal 9/18 (service worker) dan 8/22 (player). **Temuan F-15 — fatal parse error di berkas utama plugin — ditemukan persis oleh langkah `php -l` yang sekarang ada di CI**, dan **F-16 — duplikasi `<track>` subtitle — ditemukan oleh suite DOM itu**. Sejak 1.7.0 job PHPCS blocking atas pelanggaran yang dimasukkan sebuah perubahan (dibandingkan terhadap revisi basisnya, dicocokkan per sniff + pesan, bukan per nomor baris), dan uji aktivasi di staging punya skripnya: `tests/wp/smoke-activate.sh`. Ronde persiapan menambah dua suite yang juga jalan di CI: `tests/php/activation.test.php` (**81 assertion** — apa yang benar-benar didaftarkan aktivasi, termasuk pemindai yang menuntut setiap callback yang direferensikan enam berkas registrasi itu ada fungsinya) dan `tests/js/csp-audit.test.js` (**59 assertion** untuk auditor CSP statis). Yang tetap tertunda: **menjalankan** skrip itu di staging, uji lintas browser, dan pengiriman push nyata dari provider.
 
 Kondisi repo saat ini:
 - **Tidak ada test** — `find -iname "*test*"` di luar `vendor/` = 0 berkas. Tidak ada PHPUnit, tidak ada `phpunit.xml`, tidak ada test JS.
@@ -813,7 +866,7 @@ Kondisi repo saat ini:
 
 **Tersisa — benar-benar hanya eksekusi di situs hidup:**
 24. Jalankan `tests/wp/smoke-activate.sh` di staging (dengan `--activate`), lalu sekali lagi setelah deploy produksi pertama.
-25. Nyalakan `lkc_csp_strict` sambil tetap `report-only` seminggu → tempel snippet dari tab CSP → `lkc_csp_mode` → `'enforce'`.
+25. Pra-uji setiap template dengan `node tests/js/csp-audit.mjs --url=<situs> --strict`, lalu nyalakan `lkc_csp_strict` sambil tetap `report-only` seminggu → tempel snippet dari tab CSP → jalankan auditor sekali lagi → `lkc_csp_mode` → `'enforce'`.
 26. Jalankan latihan restore pertama dan isi baris lognya di `docs/BACKUP-RESTORE.md` §6.
 27. Uji lintas browser dan pengiriman push nyata dari provider.
 28. Checklist operasional pra-live: `WP_DEBUG_DISPLAY` mati, `DISALLOW_FILE_EDIT` aktif, 2FA semua admin, `debug.log` tidak terjangkau HTTP, `lkc_rate_limit_ip` dikonfigurasi di belakang CDN, `includeSubDomains` dilepas dari HSTS bila ada layanan non-HTTPS di subdomain.

@@ -2,10 +2,15 @@
  * Run the PHP security tests without a local PHP install.
  *
  * Boots a real PHP build compiled to WebAssembly, copies the files the tests
- * need into its filesystem, and runs tests/php/security.test.php unchanged.
+ * need into its filesystem, and runs a PHP test file unchanged.
  *
- * Usage:  node tests/php/run-phpwasm.mjs [phpVersion]
- *         (phpVersion defaults to 8.2, the plugin's minimum)
+ * Usage:  node tests/php/run-phpwasm.mjs [phpVersion] [testFile]
+ *         (phpVersion defaults to 8.2, the plugin's minimum; testFile defaults
+ *         to tests/php/security.test.php and is resolved against the repo root)
+ *
+ * Examples:
+ *   node tests/php/run-phpwasm.mjs 8.2
+ *   node tests/php/run-phpwasm.mjs 8.2 tests/php/activation.test.php
  *
  * Requires `npm install` inside tests/ first. If you do have PHP 8.2+, prefer
  * the faster path: `php tests/php/security.test.php`.
@@ -26,11 +31,25 @@ const needed = [
 	'plugins/layar-katalog-core/includes/security.php',
 	'plugins/layar-katalog-core/includes/audit.php',
 	'plugins/layar-katalog-core/includes/web-push.php',
+	'plugins/layar-katalog-core/includes/engagement.php',
 	'plugins/layar-katalog-core/layar-katalog-core.php',
+	/* activation.test.php asserts the player script is versioned by file time. */
+	'plugins/layar-katalog-core/player.js',
 	'themes/layar-katalog/functions.php',
 ];
 
 const version = process.argv[2] || '8.2';
+
+/* Only files under tests/ may be run, and only .php ones. */
+const requested = process.argv[3] || 'tests/php/security.test.php';
+const testFile = path.normalize( requested ).replace( /^([.][.][/\\])+/, '' );
+if ( ! testFile.startsWith( 'tests/' ) || ! testFile.endsWith( '.php' ) || testFile.includes( '..' ) ) {
+	console.error( `test file must be a .php path under tests/: ${requested}` );
+	process.exit( 1 );
+}
+if ( ! needed.includes( testFile ) ) {
+	needed.push( testFile );
+}
 const php = new PHP(
 	await loadNodeRuntime( version, { emscriptenOptions: { processId: 4242 } } )
 );
@@ -48,7 +67,7 @@ for ( const rel of needed ) {
 		`file_put_contents( '${mirror}/${rel}', base64_decode( ${JSON.stringify( b64 )} ) );`
 	);
 }
-prelude.push( `require '${mirror}/tests/php/security.test.php';` );
+prelude.push( `require '${mirror}/${testFile}';` );
 
 const out = await php.runStream( { code: prelude.join( '\n' ) } );
 const stdout = await out.stdoutText;

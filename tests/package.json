@@ -8,6 +8,8 @@
 		"lint:js": "node lint-js.mjs",
 		"lint:php": "node php/lint-phpwasm.mjs 8.2",
 		"test:sw": "node js/service-worker.test.js",
+		"test:csp": "node js/csp-audit.test.js",
+		"csp:audit": "node js/csp-audit.mjs",
 		"test:sw:baseline": "node js/service-worker.test.js --previous",
 		"test:standards": "node js/phpcs-regression.test.js",
 		"test:wp:guards": "bash wp/guards.test.sh",
@@ -15,7 +17,8 @@
 		"test:player:baseline": "node js/player-dom-xss.test.js --previous",
 		"test:php": "php php/security.test.php",
 		"test:php:wasm": "node php/run-phpwasm.mjs 8.2",
-		"test": "npm run lint:js && npm run test:standards && npm run test:sw && npm run test:player && npm run test:php:wasm"
+		"test:php:activation": "node php/run-phpwasm.mjs 8.2 tests/php/activation.test.php",
+		"test": "npm run lint:js && npm run test:standards && npm run test:sw && npm run test:csp && npm run test:player && npm run test:php:wasm && npm run test:php:activation"
 	},
 	"devDependencies": {
 		"@php-wasm/node": "^3.1.54",

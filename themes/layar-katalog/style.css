@@ -2,7 +2,7 @@
 Theme Name: Layar Katalog
 Author: Layar Katalog
 Description: Tema blok WordPress orisinal untuk katalog editorial film, animasi, serial, dan ulasan.
-Version: 1.6.1
+Version: 1.7.0
 Requires at least: 6.3
 Tested up to: 7.1
 Requires PHP: 7.4
@@ -93,6 +93,10 @@ img { max-width: 100%; }
 }
 .brand-copy .wp-block-site-tagline { margin: .25rem 0 0; color: #718078; font-size: .68rem; letter-spacing: .04em; line-height: 1.2; }
 .site-header .wp-block-navigation { color: var(--lk-ink); }
+/* The gap used to be the navigation block's own blockGap, which core renders as
+   an inline style attribute. A strict Content-Security-Policy cannot authorise
+   style attributes with a nonce, so the value lives here instead. */
+.site-header .layarkatalog-header-nav { gap: var(--wp--preset--spacing--10); }
 .site-header .wp-block-navigation-item__content {
   padding: .65rem .9rem;
   border-radius: 999px;
@@ -128,6 +132,14 @@ img { max-width: 100%; }
   pointer-events: none;
 }
 .hero-grid { gap: clamp(2rem, 5vw, 5.5rem); }
+/*
+ * Column widths live here instead of inline style attributes on the template so
+ * the front page needs no 'unsafe-inline' in style-src under a strict
+ * Content-Security-Policy. Core still forces flex-basis:100% !important when
+ * columns stack on small screens, exactly as it did with the inline value.
+ */
+.wp-block-column.hero-copy { flex-basis: 58%; }
+.wp-block-column.hero-side { flex-basis: 42%; }
 .hero-copy { position: relative; z-index: 1; }
 .eyebrow {
   margin: 0 0 1.1rem !important;

@@ -325,14 +325,17 @@
         /* Only offer resume if saved position is > 10s and < 95% of duration. */
         var pct = saved.duration > 0 ? saved.time / saved.duration : 0;
         if (pct < 0.95) {
+          /* Coerce the stored value so nothing from localStorage is interpolated as markup. */
+          var savedTime = Number(saved.time);
           var resumeDiv = document.createElement('div');
           resumeDiv.className = 'lkc-autoplay-overlay';
           resumeDiv.innerHTML =
             '<p class="lkc-autoplay-title">Lanjutkan menonton</p>' +
-            '<p class="lkc-autoplay-next">Posisi terakhir: ' + formatTime(saved.time) + '</p>' +
-            '<span class="lkc-autoplay-countdown">Klik untuk melanjutkan dari ' + formatTime(saved.time) + '</span>' +
-            '<button type="button" class="lkc-autoplay-cancel" data-lkc-resume-from="' + saved.time + '">Lanjutkan</button>' +
+            '<p class="lkc-autoplay-next">Posisi terakhir: ' + formatTime(savedTime) + '</p>' +
+            '<span class="lkc-autoplay-countdown">Klik untuk melanjutkan dari ' + formatTime(savedTime) + '</span>' +
+            '<button type="button" class="lkc-autoplay-cancel" data-lkc-resume-from>Lanjutkan</button>' +
             '<button type="button" class="lkc-autoplay-cancel" data-lkc-resume-start>Mulai dari awal</button>';
+          resumeDiv.querySelector('[data-lkc-resume-from]').setAttribute('data-lkc-resume-from', String(savedTime));
           player.style.position = 'relative';
           player.appendChild(resumeDiv);
 

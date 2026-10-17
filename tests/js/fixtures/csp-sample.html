@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+	<meta charset="utf-8">
+	<title>Contoh halaman untuk audit CSP — Layar Katalog</title>
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link rel="preload" as="font" href="/wp-content/themes/layar-katalog/assets/fonts/inter.woff2" crossorigin>
+	<link rel="stylesheet" href="/wp-content/themes/layar-katalog/style.css?ver=1.7.0">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">
+	<link rel="manifest" href="/wp-json/lkc/v1/web-app-manifest">
+	<style>
+		.hero { display: flex; }
+	</style>
+	<script type="application/ld+json">
+		{"@context":"https://schema.org","@type":"TVSeries","name":"Contoh"}
+	</script>
+	<script>
+		var layarkatalogAds = { slot: "top-banner" };
+	</script>
+	<script src="/wp-content/plugins/layar-katalog-core/player.js?ver=1710000000" defer></script>
+	<script src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js" async></script>
+	<script src="http://cdn.lama.test/legacy.js"></script>
+</head>
+<body>
+	<section class="hero">
+		<div class="hero__poster" style="flex-basis:58%">
+			<img src="/wp-content/uploads/2026/01/poster.jpg" alt="Poster"
+				srcset="/wp-content/uploads/2026/01/poster-480.jpg 480w, https://cdn.contoh.test/poster-960.jpg 960w"
+				sizes="(max-width: 782px) 100vw, 58vw">
+		</div>
+		<div class="hero__info">
+			<h1>Contoh Judul</h1>
+			<button type="button" onclick="layarkatalogRate( 42 )">Beri nilai</button>
+			<a href="javascript:void(0)" class="trap">Tautan berbahaya</a>
+		</div>
+	</section>
+
+	<video controls poster="/wp-content/uploads/2026/01/poster.jpg">
+		<source src="https://media.contoh.test/episode-01.mp4" type="video/mp4">
+		<source src="https://media.contoh.test/episode-01.webm" type="video/webm">
+		<track kind="captions" src="/wp-content/uploads/2026/01/subs.vtt" srclang="id" label="Indonesia">
+	</video>
+
+	<iframe src="https://www.youtube-nocookie.com/embed/abc123" title="Cuplikan" loading="lazy"></iframe>
+
+	<form action="/katalog/" method="get" role="search">
+		<input type="search" name="lk_q" value="">
+	</form>
+
+	<base href="/">
+</body>
+</html>

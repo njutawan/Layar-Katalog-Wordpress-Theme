@@ -38,6 +38,15 @@
 
 		video.src = button.getAttribute( 'data-video-src' );
 
+		/*
+		 * Assigning src does not remove <track> children, so drop the originals
+		 * before re-adding them. Without this every source switch appends another
+		 * copy and the subtitle menu grows one "Indonesia" entry at a time.
+		 */
+		tracks.forEach( function ( track ) {
+			track.remove();
+		} );
+
 		/* Re-add subtitle tracks after source change. */
 		trackData.forEach( function ( data ) {
 			if ( data.src ) {
@@ -76,24 +85,74 @@
 
 	var COUNTDOWN_SECONDS = 8;
 
-	function findNextEpisodeLink() {
-		var nav = document.querySelector( '.lk-episode-navigation__next' );
-		if ( nav && nav.href ) {
-			return { url: nav.href, title: nav.textContent.trim() };
+	/**
+	 * Only http(s) targets may be navigated to, so a tampered href attribute can
+	 * never trigger a javascript: or data: scheme.
+	 */
+	function isSafeUrl( url ) {
+		try {
+			var parsed = new URL( url, window.location.href );
+			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+		} catch ( error ) {
+			return false;
 		}
-		return null;
 	}
 
+	/** Create an element whose text is assigned as text, never parsed as HTML. */
+	function el( tagName, className, text ) {
+		var node = document.createElement( tagName );
+		if ( className ) {
+			node.className = className;
+		}
+		if ( typeof text === 'string' ) {
+			node.textContent = text;
+		}
+		return node;
+	}
+
+	function findNextEpisodeLink() {
+		var nav = document.querySelector( '.lk-episode-navigation__next' );
+		if ( ! nav || ! nav.href || ! isSafeUrl( nav.href ) ) {
+			return null;
+		}
+		/*
+		 * The link holds a <span> label plus a <strong> title, so nav.textContent
+		 * would concatenate both. Read the title element on its own.
+		 */
+		var titleEl = nav.querySelector( 'strong' );
+		var title   = titleEl ? titleEl.textContent.trim() : nav.textContent.trim();
+		return { url: nav.href, title: title };
+	}
+
+	/*
+	 * The episode title is author-supplied content. Build the overlay with DOM
+	 * APIs and textContent so a title containing markup can never be executed.
+	 */
 	function createOverlay( nextInfo ) {
-		var overlay = document.createElement( 'div' );
-		overlay.className = 'lkc-autoplay-overlay';
+		var overlay = el( 'div', 'lkc-autoplay-overlay' );
 		overlay.setAttribute( 'role', 'alert' );
 		overlay.setAttribute( 'aria-live', 'assertive' );
-		overlay.innerHTML =
-			'<p class="lkc-autoplay-title">Episode berikutnya</p>' +
-			'<p class="lkc-autoplay-next"><a href="' + nextInfo.url + '">' + nextInfo.title + '</a></p>' +
-			'<span class="lkc-autoplay-countdown" data-lkc-countdown>Memutar dalam <strong>' + COUNTDOWN_SECONDS + '</strong> detik…</span>' +
-			'<button type="button" class="lkc-autoplay-cancel" data-lkc-cancel-autoplay>Batal</button>';
+
+		overlay.appendChild( el( 'p', 'lkc-autoplay-title', 'Episode berikutnya' ) );
+
+		var link = el( 'a', '', nextInfo.title );
+		link.href = nextInfo.url;
+		var nextWrap = el( 'p', 'lkc-autoplay-next' );
+		nextWrap.appendChild( link );
+		overlay.appendChild( nextWrap );
+
+		var countdown = el( 'span', 'lkc-autoplay-countdown' );
+		countdown.setAttribute( 'data-lkc-countdown', '' );
+		countdown.appendChild( document.createTextNode( 'Memutar dalam ' ) );
+		countdown.appendChild( el( 'strong', '', String( COUNTDOWN_SECONDS ) ) );
+		countdown.appendChild( document.createTextNode( ' detik…' ) );
+		overlay.appendChild( countdown );
+
+		var cancel = el( 'button', 'lkc-autoplay-cancel', 'Batal' );
+		cancel.type = 'button';
+		cancel.setAttribute( 'data-lkc-cancel-autoplay', '' );
+		overlay.appendChild( cancel );
+
 		return overlay;
 	}
 
@@ -121,7 +180,7 @@
 				player.appendChild( overlay );
 
 				var secondsLeft = COUNTDOWN_SECONDS;
-				var countdownEl = overlay.querySelector( '[data-lkc-countdown]' );
+				var countdownEl = overlay.querySelector( '[data-lkc-countdown] strong' );
 				var cancelled = false;
 
 				var interval = setInterval( function () {
@@ -136,7 +195,7 @@
 						return;
 					}
 					if ( countdownEl ) {
-						countdownEl.innerHTML = 'Memutar dalam <strong>' + secondsLeft + '</strong> detik…';
+						countdownEl.textContent = String( secondsLeft );
 					}
 				}, 1000 );
 

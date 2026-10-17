@@ -1,0 +1,289 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The checks below are the ones that would have caught every defect the security
+# review found in this repository: a fatal PHP parse error in the plugin's main
+# file (F-15), a DOM XSS in the player (F-01), and service-worker caching that
+# leaked signed-in HTML between people sharing a device (F-07).
+jobs:
+  php:
+    name: PHP 8.2 lint + security tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: openssl, curl, mbstring, simplexml
+          coverage: none
+
+      # A single broken file makes the plugin uninstallable, so this is the
+      # cheapest high-value check in the whole workflow.
+      - name: Lint every PHP file (vendor excluded)
+        run: |
+          set -u
+          status=0
+          while IFS= read -r file; do
+            if ! php -l "$file" > /dev/null; then
+              status=1
+            fi
+          done < <(find . -name '*.php' \
+                     -not -path './plugins/layar-katalog-core/vendor/*' \
+                     -not -path './.git/*' | sort)
+          exit "$status"
+
+      - name: Run the security test suite
+        run: php tests/php/security.test.php
+
+      # What activation actually registers: post types, taxonomy, all 24 catalog
+      # meta keys, the lkc/v1 routes and their permission callbacks, the four
+      # custom tables, the cron jobs and the front-end assets. It also scans
+      # every add_action/add_filter/route registration in the shipped files and
+      # fails if the callback it names does not exist - the class of defect that
+      # F-15 belonged to and that `php -l` cannot see.
+      - name: Run the activation test suite
+        run: php tests/php/activation.test.php
+
+      # Proves the staging scripts refuse to touch the live database: they are
+      # run by hand against a real site, so their guards are the risky part.
+      - name: Staging script guards
+        run: bash tests/wp/guards.test.sh
+
+      # The guards prove the staging scripts refuse dangerous invocations; this
+      # proves their checks work. A simulated WordPress answers every wp, mysql,
+      # curl and php call they make, healthy first and then degraded one thing at
+      # a time, so a check that could never pass is caught here rather than on
+      # somebody's staging site.
+      - name: Staging scripts against a simulated install
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          bash tests/wp/simulated-install.test.sh > /tmp/lkc-simulated.txt 2>&1
+          status=$?
+          set -e
+          cat /tmp/lkc-simulated.txt
+
+          # The raw log of a run is not always reachable, so when this fails the
+          # report is posted where it can be read: on the pull request itself.
+          if [ "$status" -ne 0 ] && [ -n "$PR_NUMBER" ] && command -v gh >/dev/null 2>&1; then
+            printf '### Simulated install: what failed on the runner\n\n```text\n' > /tmp/lkc-simulated-comment.md
+            grep -A3 '^FAIL' /tmp/lkc-simulated.txt | head -c 20000 >> /tmp/lkc-simulated-comment.md || true
+            printf '\n--- summary ---\n' >> /tmp/lkc-simulated-comment.md
+            tail -n 6 /tmp/lkc-simulated.txt >> /tmp/lkc-simulated-comment.md
+            printf '\n```\n' >> /tmp/lkc-simulated-comment.md
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/lkc-simulated-comment.md || true
+          fi
+          exit "$status"
+
+  javascript:
+    name: JavaScript syntax + DOM tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax-check every JavaScript file
+        run: node tests/lint-js.mjs
+
+      # Guards the script that makes the coding-standards job blocking; it only
+      # uses Node built-ins, so it runs before the dependency install.
+      - name: Standards-regression comparator
+        run: node tests/js/phpcs-regression.test.js
+
+      - name: Service worker cache rules
+        run: node tests/js/service-worker.test.js
+
+      # Guards the tool that answers "would enforce mode break this page?"
+      # before anybody switches lkc_csp_mode on a live site.
+      - name: CSP auditor
+        run: node tests/js/csp-audit.test.js
+
+      - name: Install test dependencies
+        run: npm ci --prefix tests --no-audit --no-fund
+
+      - name: Player DOM XSS regression
+        run: node tests/js/player-dom-xss.test.js
+
+      # Reviews a CSP mu-plugin snippet by loading it into a real PHP 8.2 with
+      # the plugin's own policy builder, then diffing the header it produces.
+      # Needs the WebAssembly runtime, so it runs after the install.
+      - name: CSP snippet reviewer
+        run: node tests/js/csp-snippet-review.test.js
+
+      # Proves the strict header and the theme's markup agree, without a browser:
+      # the WebAssembly sandbox emits both, jsdom parses the document, and the
+      # auditor's CSP matcher judges every element against the emitted header.
+      # This is the closest CI can get to step 2 of going live.
+      - name: CSP strict-mode round trip
+        run: node tests/js/csp-strict-roundtrip.test.js
+
+      # The php job runs these two suites natively. Running them again here means
+      # both PHP paths execute on every push, so a suite that only passes under one
+      # build cannot slip through - and this is the path a contributor without PHP
+      # installed uses locally.
+      - name: Security suite in WebAssembly PHP 8.2
+        run: node tests/php/run-phpwasm.mjs 8.2 tests/php/security.test.php
+
+      - name: Activation suite in WebAssembly PHP 8.2
+        run: node tests/php/run-phpwasm.mjs 8.2 tests/php/activation.test.php
+
+  dependencies:
+    name: Composer advisory audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP with Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      # Audits composer.lock without installing anything: the bundled vendor/
+      # directory is what actually ships, so the lock file is the source of truth.
+      - name: Audit bundled dependencies
+        working-directory: plugins/layar-katalog-core
+        run: composer audit --locked
+
+  standards:
+    name: Coding standards (blocking on new violations)
+    runs-on: ubuntu-latest
+    # Blocking, but only for what a change introduces. This codebase predates the
+    # WordPress ruleset, so an all-files PHPCS run is red from day one and a red
+    # check nobody can act on just gets ignored. Comparing this revision against
+    # its base means new and edited code has to be clean while the outstanding
+    # debt is worked down at its own pace - and every violation fixed on the way
+    # is reported, so the trend is visible.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          # The comparison needs the base revision, not just this one.
+          fetch-depth: 0
+
+      - name: Set up PHP with Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # WPCS pulls in PHP_CodeSniffer itself; only the installer plugin needs
+      # to be allowed explicitly.
+      - name: Install the WordPress coding standards
+        run: |
+          composer global config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
+          composer global require --no-interaction wp-coding-standards/wpcs:^3.0
+          echo "$(composer global config bin-dir --absolute --quiet)" >> "$GITHUB_PATH"
+
+      - name: Determine the revision to compare against
+        id: base
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          zeros="0000000000000000000000000000000000000000"
+          if [ -n "$PR_BASE" ]; then
+            candidate="$PR_BASE"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$zeros" ]; then
+            candidate="$PUSH_BEFORE"
+          else
+            candidate="$(git rev-parse --verify --quiet HEAD~1 || true)"
+          fi
+
+          if [ -z "$candidate" ] || ! git cat-file -e "${candidate}^{commit}" 2>/dev/null; then
+            echo "No usable base revision, so there is nothing to compare against."
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Comparing against ${candidate}"
+          echo "sha=${candidate}" >> "$GITHUB_OUTPUT"
+
+      - name: Report the standards debt of the base revision
+        if: steps.base.outputs.sha != ''
+        run: |
+          git worktree add --detach /tmp/lkc-base "${{ steps.base.outputs.sha }}"
+          # The base revision predates this ruleset, so it is scanned with the
+          # ruleset from this revision: both reports must come from identical rules.
+          cp phpcs.xml.dist /tmp/lkc-base/phpcs.xml.dist
+          cd /tmp/lkc-base
+          find . -name '*.php' \
+               -not -path './.git/*' \
+               -not -path './plugins/layar-katalog-core/vendor/*' \
+               -not -path './tests/*' | sort > /tmp/lkc-base-files.txt
+          phpcs --standard=phpcs.xml.dist --warning-severity=0 -q \
+                --report=json --report-file=/tmp/lkc-base.json \
+                $(cat /tmp/lkc-base-files.txt) || true
+
+      - name: Report the standards debt of this revision
+        if: steps.base.outputs.sha != ''
+        run: |
+          find . -name '*.php' \
+               -not -path './.git/*' \
+               -not -path './plugins/layar-katalog-core/vendor/*' \
+               -not -path './tests/*' | sort > /tmp/lkc-head-files.txt
+          phpcs --standard=phpcs.xml.dist --warning-severity=0 -q \
+                --report=json --report-file=/tmp/lkc-head.json \
+                $(cat /tmp/lkc-head-files.txt) || true
+
+      - name: Fail only on violations this change introduces
+        if: steps.base.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          node tests/phpcs-regression.mjs /tmp/lkc-base.json /tmp/lkc-base /tmp/lkc-head.json "$GITHUB_WORKSPACE" --detail \
+            > /tmp/lkc-standards.txt 2>&1
+          status=$?
+          set -e
+          cat /tmp/lkc-standards.txt
+
+          # Same reason as the step in the php job: when the comparison fails, the
+          # list of violations this change introduces is posted to the pull
+          # request, because that is the list somebody has to act on.
+          if [ "$status" -ne 0 ] && [ -n "$PR_NUMBER" ] && command -v gh >/dev/null 2>&1; then
+            printf '### Coding standards: violations this change introduces\n\n```text\n' > /tmp/lkc-standards-comment.md
+            head -c 50000 /tmp/lkc-standards.txt >> /tmp/lkc-standards-comment.md
+            printf '\n```\n' >> /tmp/lkc-standards-comment.md
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/lkc-standards-comment.md || true
+          fi
+          exit "$status"
+
+      - name: Explain a skipped comparison
+        if: steps.base.outputs.sha == ''
+        run: |
+          echo "::notice::Coding standards were not compared because no base revision was available (first commit or a manual run without history)."
+

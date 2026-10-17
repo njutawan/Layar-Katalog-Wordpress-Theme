@@ -4,7 +4,11 @@
  * @package Layar_Katalog_Core
  */
 
-var CACHE_NAME = 'lk-shell-v1';
+/*
+ * v2: the caching rules below were tightened, so the version is bumped to make
+ * the activate handler drop v1 caches that may already hold personalised HTML.
+ */
+var CACHE_NAME = 'lk-shell-v2';
 var OFFLINE_URL = '/offline/';
 
 /* App shell assets to pre-cache on install. */
@@ -12,6 +16,9 @@ var SHELL_ASSETS = [
   '/',
   OFFLINE_URL
 ];
+
+/* Query arguments that mark a preview or a customizer session. */
+var UNCACHEABLE_QUERY = /[?&](preview|customize_changeset_uuid|customize_autosave|lk_no_cache)=/i;
 
 /* ---------- Install ---------- */
 
@@ -43,6 +50,51 @@ self.addEventListener( 'activate', function ( event ) {
   self.clients.claim();
 } );
 
+/* ---------- Cache eligibility ---------- */
+
+/**
+ * Decide whether a response may be written to Cache Storage.
+ *
+ * Cache Storage is shared by everyone using the browser profile, so storing a
+ * signed-in page would show the previous visitor's admin bar, account state, and
+ * nonces to the next person on a shared device. The server marks personalised
+ * responses with X-LK-Personalized; anything private, non-basic, unsuccessful, or
+ * belonging to a preview is left out as well.
+ */
+function isCacheable( request, response ) {
+  if ( ! response || ! response.ok || response.type !== 'basic' ) {
+    return false;
+  }
+  if ( response.headers.get( 'X-LK-Personalized' ) ) {
+    return false;
+  }
+  var cacheControl = ( response.headers.get( 'Cache-Control' ) || '' ).toLowerCase();
+  if ( cacheControl.indexOf( 'no-store' ) !== -1 || cacheControl.indexOf( 'private' ) !== -1 ) {
+    return false;
+  }
+  try {
+    if ( UNCACHEABLE_QUERY.test( new URL( request.url ).search ) ) {
+      return false;
+    }
+  } catch ( error ) {
+    return false;
+  }
+  return true;
+}
+
+/** Store a clone of the response when, and only when, it is eligible. */
+function cacheIfEligible( request, response ) {
+  if ( ! isCacheable( request, response ) ) {
+    return;
+  }
+  var clone = response.clone();
+  caches.open( CACHE_NAME ).then( function ( cache ) {
+    cache.put( request, clone ).catch( function () {
+      /* Cache Storage can be full or evicted; never fail the request over it. */
+    } );
+  } );
+}
+
 /* ---------- Fetch (network-first for HTML, cache-first for assets) ---------- */
 
 self.addEventListener( 'fetch', function ( event ) {
@@ -60,7 +112,7 @@ self.addEventListener( 'fetch', function ( event ) {
 
   /* Skip WP admin and REST API. */
   var pathname = new URL( request.url ).pathname;
-  if ( pathname.indexOf( '/wp-admin' ) === 0 || pathname.indexOf( '/wp-json' ) === 0 ) {
+  if ( pathname.indexOf( '/wp-admin' ) === 0 || pathname.indexOf( '/wp-json' ) === 0 || pathname.indexOf( '/wp-login.php' ) === 0 ) {
     return;
   }
 
@@ -72,10 +124,7 @@ self.addEventListener( 'fetch', function ( event ) {
     event.respondWith(
       fetch( request )
         .then( function ( response ) {
-          var clone = response.clone();
-          caches.open( CACHE_NAME ).then( function ( cache ) {
-            cache.put( request, clone );
-          } );
+          cacheIfEligible( request, response );
           return response;
         } )
         .catch( function () {
@@ -92,10 +141,7 @@ self.addEventListener( 'fetch', function ( event ) {
           return cached;
         }
         return fetch( request ).then( function ( response ) {
-          var clone = response.clone();
-          caches.open( CACHE_NAME ).then( function ( cache ) {
-            cache.put( request, clone );
-          } );
+          cacheIfEligible( request, response );
           return response;
         } );
       } )
@@ -131,7 +177,18 @@ self.addEventListener( 'push', function ( event ) {
 
 self.addEventListener( 'notificationclick', function ( event ) {
   event.notification.close();
+
   var targetUrl = ( event.notification.data && event.notification.data.url ) || '/';
+
+  /* Never open a URL outside this origin, whatever a payload claims. */
+  try {
+    if ( new URL( targetUrl, self.location.origin ).origin !== self.location.origin ) {
+      targetUrl = '/';
+    }
+  } catch ( error ) {
+    targetUrl = '/';
+  }
+
   event.waitUntil(
     self.clients.matchAll( { type: 'window', includeUncontrolled: true } ).then( function ( clients ) {
       for ( var i = 0; i < clients.length; i++ ) {

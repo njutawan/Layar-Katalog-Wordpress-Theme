@@ -689,8 +689,25 @@ function layarkatalog_ad_slot_shortcode( $atts = array() ) {
 	}
 	$location   = layarkatalog_ad_locations()[ $slot ];
 	$min_height = isset( $ad['min_height'] ) ? min( 1200, absint( $ad['min_height'] ) ) : 0;
-	$height_css = $min_height ? ' style="min-height:' . $min_height . 'px"' : '';
-	$markup = '<aside class="lk-ad-slot lk-ad-slot--' . esc_attr( $slot ) . '" aria-label="' . esc_attr( sprintf( __( 'Iklan — %s', 'layar-katalog' ), $location['label'] ) ) . '"><span class="lk-ad-slot__label">' . esc_html__( 'Iklan', 'layar-katalog' ) . '</span><div class="lk-ad-slot__content"' . $height_css . '>' . $ad['code'] . '</div></aside>';
+
+	/*
+	 * The reserved height goes in a nonce'd <style> element rather than a style
+	 * attribute. Under a strict Content-Security-Policy a nonce authorises inline
+	 * <script>/<style> elements but never a style attribute, which would need
+	 * 'unsafe-hashes' plus a hash that changes with every height. The id counts
+	 * outputs rather than slots, because one slot can be rendered twice on a page.
+	 */
+	$height_css = '';
+	$content_id = '';
+	if ( $min_height > 0 ) {
+		static $output_index = 0;
+		$output_index++;
+		$content_id = 'lk-ad-slot-content-' . $output_index;
+		$height_css = '<style>#' . $content_id . '{min-height:' . $min_height . 'px}</style>';
+	}
+	$id_attribute = '' === $content_id ? '' : ' id="' . esc_attr( $content_id ) . '"';
+
+	$markup = '<aside class="lk-ad-slot lk-ad-slot--' . esc_attr( $slot ) . '" aria-label="' . esc_attr( sprintf( __( 'Iklan — %s', 'layar-katalog' ), $location['label'] ) ) . '"><span class="lk-ad-slot__label">' . esc_html__( 'Iklan', 'layar-katalog' ) . '</span>' . $height_css . '<div class="lk-ad-slot__content"' . $id_attribute . '>' . $ad['code'] . '</div></aside>';
 
 	return layarkatalog_stamp_csp_nonce( $markup ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- trusted ad code is capability-gated and sanitized on save.
 }

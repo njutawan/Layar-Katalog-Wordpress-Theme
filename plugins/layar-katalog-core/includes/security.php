@@ -307,7 +307,52 @@ function lkc_apply_csp_strict_mode( $policy ) {
 		}
 	}
 
+	/*
+	 * Style attributes are the one thing a nonce cannot cover, and WordPress
+	 * prints them everywhere: a navigation blockGap, a column width, a cover
+	 * overlay, a duotone filter. Dropping 'unsafe-inline' from style-src without
+	 * saying so here would strip the layout off pages that otherwise keep working,
+	 * which is read as "strict mode broke my site" rather than as a policy. So
+	 * style-src-attr keeps the keyword while script-src-attr stays strict, which
+	 * means an inline on* handler is still blocked. See
+	 * lkc_csp_strict_allows_style_attributes() for turning this off.
+	 */
+	if ( lkc_csp_strict_allows_style_attributes() ) {
+		$attributes = isset( $policy['style-src-attr'] ) && is_array( $policy['style-src-attr'] ) ? $policy['style-src-attr'] : array();
+		if ( ! in_array( "'unsafe-inline'", $attributes, true ) ) {
+			$attributes[] = "'unsafe-inline'";
+		}
+		$policy['style-src-attr'] = $attributes;
+	}
+
 	return $policy;
+}
+
+/**
+ * Whether strict mode still permits inline style attributes.
+ *
+ * True by default, and the concession is deliberately narrow: it applies to
+ * `style-src-attr` only, so inline <style> elements still need the nonce and
+ * `script-src-attr` still blocks inline event handlers. The bundled theme and
+ * plugin print no style attributes of their own any more - the ad slot reserves
+ * its height through a nonce'd <style> element and the header navigation gap
+ * lives in style.css - so a site that only uses them can turn this off:
+ *
+ *     add_filter( 'lkc_csp_strict_style_attributes', '__return_false' );
+ *
+ * Turn it off only after watching Tools → Log Keamanan for `style-attribute`
+ * reports, because core blocks and third-party plugins are the usual source and
+ * they are not visible in the theme's own markup.
+ *
+ * @return bool
+ */
+function lkc_csp_strict_allows_style_attributes() {
+	/**
+	 * Filter whether strict mode keeps 'unsafe-inline' for style attributes.
+	 *
+	 * @param bool $allow True to keep inline style attributes working. Default true.
+	 */
+	return (bool) apply_filters( 'lkc_csp_strict_style_attributes', true );
 }
 
 /**

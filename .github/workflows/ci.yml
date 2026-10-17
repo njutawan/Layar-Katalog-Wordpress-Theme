@@ -108,6 +108,13 @@ jobs:
       - name: CSP snippet reviewer
         run: node tests/js/csp-snippet-review.test.js
 
+      # Proves the strict header and the theme's markup agree, without a browser:
+      # the WebAssembly sandbox emits both, jsdom parses the document, and the
+      # auditor's CSP matcher judges every element against the emitted header.
+      # This is the closest CI can get to step 2 of going live.
+      - name: CSP strict-mode round trip
+        run: node tests/js/csp-strict-roundtrip.test.js
+
   dependencies:
     name: Composer advisory audit
     runs-on: ubuntu-latest

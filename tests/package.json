@@ -10,6 +10,7 @@
 		"test:sw": "node js/service-worker.test.js",
 		"test:csp": "node js/csp-audit.test.js",
 		"csp:audit": "node js/csp-audit.mjs",
+		"test:csp:roundtrip": "node js/csp-strict-roundtrip.test.js",
 		"csp:review": "node csp-snippet-review.mjs",
 		"test:snippet": "node js/csp-snippet-review.test.js",
 		"test:sw:baseline": "node js/service-worker.test.js --previous",
@@ -21,7 +22,7 @@
 		"test:php": "php php/security.test.php",
 		"test:php:wasm": "node php/run-phpwasm.mjs 8.2",
 		"test:php:activation": "node php/run-phpwasm.mjs 8.2 tests/php/activation.test.php",
-		"test": "npm run lint:js && npm run test:standards && npm run test:sw && npm run test:csp && npm run test:snippet && npm run test:player && npm run test:php:wasm && npm run test:php:activation"
+		"test": "npm run lint:js && npm run test:standards && npm run test:sw && npm run test:csp && npm run test:snippet && npm run test:csp:roundtrip && npm run test:player && npm run test:php:wasm && npm run test:php:activation"
 	},
 	"devDependencies": {
 		"@php-wasm/node": "^3.1.54",

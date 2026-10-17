@@ -429,6 +429,10 @@ t_load_functions(
 		'layarkatalog_audit_ad_code_change',
 		'layarkatalog_add_csp_nonce_to_inline_tags',
 		'layarkatalog_stamp_csp_nonce',
+		/* csp-strict.test.php renders the front-end markup these produce. */
+		'layarkatalog_get_ad_settings',
+		'layarkatalog_ad_slot_shortcode',
+		'layarkatalog_output_global_ad_code',
 	)
 );
 

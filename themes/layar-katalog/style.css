@@ -93,6 +93,10 @@ img { max-width: 100%; }
 }
 .brand-copy .wp-block-site-tagline { margin: .25rem 0 0; color: #718078; font-size: .68rem; letter-spacing: .04em; line-height: 1.2; }
 .site-header .wp-block-navigation { color: var(--lk-ink); }
+/* The gap used to be the navigation block's own blockGap, which core renders as
+   an inline style attribute. A strict Content-Security-Policy cannot authorise
+   style attributes with a nonce, so the value lives here instead. */
+.site-header .layarkatalog-header-nav { gap: var(--wp--preset--spacing--10); }
 .site-header .wp-block-navigation-item__content {
   padding: .65rem .9rem;
   border-radius: 999px;

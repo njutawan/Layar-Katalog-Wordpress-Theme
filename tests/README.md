@@ -21,12 +21,14 @@ bash wp/simulated-install.test.sh      # and their checks work, against a simula
 npm ci                                 # inside tests/; a lock file is committed
 node js/player-dom-xss.test.js
 node js/csp-snippet-review.test.js     # the mu-plugin snippet reviewer
+node js/csp-strict-roundtrip.test.js   # the strict header judged against the theme's own markup
 
 # PHP — either of these
 php php/security.test.php              # if you have PHP 8.2+
 php php/activation.test.php            # what activation registers
 node php/run-phpwasm.mjs 8.2                            # if you do not: real PHP 8.2 in WebAssembly
 node php/run-phpwasm.mjs 8.2 tests/php/activation.test.php
+node php/run-phpwasm.mjs 8.2 tests/php/csp-strict.test.php   # what strict mode really emits
 node php/lint-phpwasm.mjs 8.2          # parse-check every project PHP file without PHP installed
 ```
 
@@ -42,6 +44,8 @@ node php/lint-phpwasm.mjs 8.2          # parse-check every project PHP file with
 | `js/csp-audit.test.js` | 59 | The auditor that answers "would enforce mode break this page?": policy parsing, the `-elem`/`-attr` → parent → `default-src` fallback chain, host wildcards and ports, `'self'`, scheme sources, the CSP2 trap where a nonce makes the browser ignore `'unsafe-inline'`, the fact that no nonce can cover a `style=` attribute or an `onclick=` handler, the HTML scanner over a realistic page fixture, the generated allowlist snippet, and the CLI's exit codes. |
 | `js/player-dom-xss.test.js` | 22 | That a hostile episode title stays text, that `javascript:` and `data:` navigation targets are refused, and that switching video source keeps exactly one copy of each subtitle track. |
 | `js/csp-snippet-review.test.js` | 105 | The reviewer that judges a CSP snippet before it is pasted into `mu-plugins`: the static refusals (filesystem, network, shell, `eval`, superglobals, `$wpdb`, a closing tag, a wholesale `$policy =`), the structural ones (no `<?php`, no `add_filter`, a tag the plugin never applies, a missing `return $policy`), the diff of the header the plugin would really send, and one end-to-end run of all eight fixtures through a real PHP 8.2 — including a snippet that survives report-only mode and only shows its hand under `lkc_csp_strict`. |
+| `php/csp-strict.test.php` | 45 | What strict mode really sends, read off the shipped source: the nonce exists, is stable within a request and uses only the URL-safe base64 alphabet; `'unsafe-inline'` and `'unsafe-eval'` are gone from `script-src` and `style-src` while every other directive survives; the nonce lands in both; `style-src-attr 'unsafe-inline'` is the single concession and `script-src-attr` is not loosened; `lkc_csp_strict_style_attributes` → `false` removes exactly that and nothing else; an allowlist snippet adds its host without dragging `'unsafe-inline'` back; the header is delivered report-only until `lkc_csp_mode` changes; no header at all is computed for `wp-admin`; and the theme's own markup — ad slot, administrator ad loader — comes out nonce'd with no inline style attribute anywhere. Emits the header and the document as JSON for the round trip below. |
+| `js/csp-strict-roundtrip.test.js` | 20 | That header, judged against that document. Boots the sandbox, parses the emitted markup with jsdom and runs the CSP matcher from `js/csp-audit.mjs` over it: everything the theme and plugin print is allowed; the administrator's external ad loader is blocked until the generated snippet allowlists its host; an inline `onclick` handler is blocked in strict mode yet still runs under the default report-only header; a page-builder style attribute survives only because of the concession and is blocked the moment it is switched off. |
 | `js/phpcs-regression.test.js` | 22 | The comparator behind the blocking coding-standards job: line-number drift is not a new violation, a repeated violation is counted per occurrence, warnings are not errors, a deleted file counts as debt removed, and bad input exits 2 instead of passing silently. |
 | `wp/simulated-install.test.sh` | 118 | Both staging scripts, run end to end against a WordPress that is not there: a fake `wp`, `mysql`, `curl` and `php -l` answer every call they make. First healthy (the smoke test's own 37 checks all fire and the drill prints its log row), then degraded one thing at a time — a missing table, an unscheduled cron job, an unregistered route, a plaintext or orphaned VAPID key, no CSP header, no HSTS, a reachable `vendor/`, a rate limiter that never answers 429 or answers it too late, an inactive plugin or theme, a root `index.php` in the block theme, a file that does not parse, a fatal during the activation cycle, notices in `debug.log`, an incomplete restore, rotated salts, a backup missing salt definitions — asserting each time that the right check is blamed and no other one is. Also asserts the drill never points `mysql` at the live database, always uses the 0600 credentials file, and honours `--activate`, `--skip-http`, `--skip-rate-limit`, `--verify-only`, `--keep` and `--keep-dump`. |
 | `wp/guards.test.sh` | 24 | The two staging scripts abort before touching anything when the target database is the live one, when the name contains shell metacharacters, when the drop was not confirmed by name, or when the plugin would be deactivated without `--activate`. Every case asserts no `mysql` command was issued. |
@@ -108,6 +112,19 @@ What it refuses outright, all of which have been seen in real snippets:
 The fixtures in `js/fixtures/snippets/` are one file per case and are stored with a `.php.txt` extension on purpose: CI runs `php -l` over every `*.php` in the repository, and one fixture is deliberately unparsable. Comments are blanked before scanning, so a docblock that says "never call `eval()` here" is not reported as a call to `eval()`.
 
 The snippet is executed, so only run this on a file you would run. It executes inside the WebAssembly sandbox: no host filesystem beyond the mirrored repository, no database, no network.
+
+## Strict mode without a browser
+
+`lkc_csp_strict` is the switch that turns a report-only policy into a blocking one, and getting it wrong is not a test failure — it is a site whose scripts stop running. Two suites cover as much of that as can be covered without a browser, and they are deliberately wired together: the PHP one emits, the JavaScript one judges.
+
+```bash
+node php/run-phpwasm.mjs 8.2 tests/php/csp-strict.test.php   # 45 assertions: what the plugin emits
+node js/csp-strict-roundtrip.test.js                         # 20 assertions: whether the markup survives it
+```
+
+The emitter boots the shipped plugin *and* theme in the WebAssembly sandbox, turns strict mode on, and prints one line of JSON: the header the plugin would really send (four variants — default, strict, strict with an allowlist snippet applied, strict with the style-attribute concession switched off) and a document built from the markup the theme really prints. That document is not a fixture somebody wrote to pass: it is the output of `layarkatalog_ad_slot_shortcode()` and `layarkatalog_output_global_ad_code()` with an administrator's ad code in the options table, plus two controls that the theme does not produce — a `style=` attribute and an `onclick=` handler, the way a page builder would leave them.
+
+The round trip then does what a browser does, with the same matcher the pre-flight auditor uses: parse the document, work out what each element needs, and ask the header. Run it after touching `includes/security.php`, the theme's inline output, or the stamping helpers. What it cannot see is markup from plugins that are not in this repository, core's own block output on a real page, or a cache or proxy in front of the site — which is why step 2 of going live is still a report-only week on staging.
 
 ## Staging scripts
 
